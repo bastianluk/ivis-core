@@ -56,7 +56,7 @@ EOF
     fi
 
     installPrerequisities
-    installIvis http://localhost:8080 http://localhost:8081 0.0.0.0 false "${apiUsesClientCerts}" 
+    installIvis http://192.168.56.102:8080 http://192.168.56.102:8081 0.0.0.0 false "${apiUsesClientCerts}" 
     installService
 
     echo
