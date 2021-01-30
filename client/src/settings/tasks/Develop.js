@@ -54,21 +54,23 @@ export default class Develop extends Component {
             editorHeight: defaultEditorHeight,
             taskVersionId: 0,
             fileToDeleteName: null,
-            fileToDeleteId: null
+            fileToDeleteId: null,
+            chunkCounter: 0
         };
+
+        this.runOutputChunks = [];
 
         const t = props.t;
 
         this.saveLabels = {
             [SaveState.CHANGED]: t('Save'),
-            [SaveState.SAVED]: t('Saved'),
-            [SaveState.SAVING]: t('Saving...')
+            [SaveState.SAVING]: t('Saving...'),
+            [SaveState.SAVED]: t('Saved')
         };
 
         this.saveRunLabels = {
+            ...this.saveLabels,
             [SaveState.CHANGED]: t('Save and Run'),
-            [SaveState.SAVED]: t('Saved'),
-            [SaveState.SAVING]: t('Saving...')
         };
 
         this.initForm({
@@ -79,6 +81,11 @@ export default class Develop extends Component {
                 }
             }
         });
+
+        this.save = ::this.save
+        this.changeJob = ::this.changeJob;
+        this.toggleMaximized = ::this.toggleMaximized;
+        this.toggleIntegration = ::this.toggleIntegration;
     }
 
     static propTypes = {
@@ -87,55 +94,126 @@ export default class Develop extends Component {
 
     changeJob(id) {
         if (this.state.jobId !== id) {
-            this.setState({jobId: id});
-            if (this.runRefreshTimeout) {
-                clearTimeout(this.runRefreshTimeout);
-            }
+            this.closeRunEventSource();
             this.setState({
                 run: null,
-                runId: null
+                runId: null,
+                jobId: id
             });
+        }
+    }
+
+    initRunEventSource(runId) {
+        this.runOutputChunks = [];
+        this.runEventSource = new EventSource(getUrl(`sse/jobs/${this.state.jobId}/run/${runId}`));
+        this.runEventSource.addEventListener("changeRunStatus", (e) => {
+            this.state.runStatus = e.data;
+        });
+
+        this.runEventSource.addEventListener("init", (e) => {
+            const run = JSON.parse(e.data);
+
+            this.setState({
+                runStatus: run.status
+            });
+        });
+
+
+        this.runEventSource.addEventListener("output", (e) => {
+            if (e.origin + '/' !== getUrl()) {
+                console.log(`Origin ${e.origin} not allowed; only events from ${getUrl()}`);
+            } else {
+                const data = JSON.parse(e.data);
+                let counter = this.state.chunkCounter;
+                if (Array.isArray(data)) {
+                    data.forEach(d => {
+                        this.runOutputChunks.push({
+                            id: counter++,
+                            data: d
+                        });
+                    })
+                } else {
+                    this.runOutputChunks.push({
+                        id: counter++,
+                        data: data
+                    });
+                }
+
+                this.setState({
+                    chunkCounter:counter
+                });
+            }
+        });
+
+        this.runEventSource.addEventListener("success", (e) => {
+            this.setState({
+                runStatus: RunStatus.SUCCESS
+            });
+            this.closeRunEventSource();
+        });
+        this.runEventSource.addEventListener("stop", (e) => {
+
+            this.runOutputChunks.push({
+                id: this.state.chunkCounter,
+                data: `ERROR: Run has been stopped`
+            });
+
+            this.setState({
+                runStatus: RunStatus.FAILED,
+                chunkCounter: this.state.chunkCounter + 1
+            });
+            this.closeRunEventSource();
+        });
+
+        this.runEventSource.onmessage = function (e) {
+            //console.log(e.data);
+        }
+
+        this.runEventSource.onerror = (e) => {
+            console.log(e);
+            this.runOutputChunks.push({
+                id: this.state.chunkCounter,
+                data: `ERROR: ${JSON.parse(e.data)}`
+            });
+            this.setState({
+                chunkCounter: this.state.chunkCounter + 1
+            });
+            this.stop();
+        };
+    }
+
+    @withAsyncErrorHandler
+    async run() {
+        if (this.state.jobId != null) {
+            this.clearFormStatusMessage();
+            const runIdData = await axios.post(getUrl(`rest/job-run/${this.state.jobId}`));
+            const runId = runIdData.data;
+
+            this.initRunEventSource(runId);
+
+            this.setState({
+                runStatus: RunStatus.INITIALIZATION,
+                runId: runId,
+                chunkCounter: 0
+            });
+        } else {
+            this.setFormStatusMessage('warning', this.props.t('Job is not selected. Nothing to run.'));
         }
     }
 
     @withAsyncErrorHandler
-    async fetchRun() {
-        const result = await axios.get(getUrl(`rest/jobs/${this.state.jobId}/run/${this.state.runId}`));
+    async stop() {
+        if (this.state.runId) {
+            await axios.post(getUrl(`rest/job-stop/${this.state.runId}`));
 
-        const run = result.data;
+            this.closeRunEventSource();
 
-        this.setState({
-            run: run
-        });
-
-        if (run.status == null
-            || run.status === RunStatus.INITIALIZATION
-            || run.status === RunStatus.SCHEDULED
-            || run.status === RunStatus.RUNNING) {
-            this.runRefreshTimeout = setTimeout(() => {
-                this.fetchRun();
-            }, 1000);
-        } else {
-
-        }
-    }
-
-    async run() {
-        if (this.state.jobId != null) {
-            this.clearFormStatusMessage();
-            const runId = await axios.post(getUrl(`rest/job-run/${this.state.jobId}`));
-
-            if (this.runRefreshTimeout) {
-                clearTimeout(this.runRefreshTimeout);
-            }
+            // FIXME this might cause race condition in the case job finishes on the server, at the same time
+            // -- in that case this will be incorrect
             this.setState({
-                run: null,
-                runId: runId.data
+                runStatus: RunStatus.FAILED,
+                runId: null
             });
-
-            this.fetchRun();
-        } else {
-            this.setFormStatusMessage('warning', this.props.t('Job is not selected. Nothing to run.'));
         }
     }
 
@@ -203,7 +281,7 @@ export default class Develop extends Component {
         return spec;
     }
 
-    getFormValuesMutator(data){
+    getFormValuesMutator(data) {
         this.inputMutator(data);
     }
 
@@ -219,7 +297,9 @@ export default class Develop extends Component {
             if (this.state.isMaximized) {
                 desiredHeight = window.innerHeight - tabPaneContentNodeRect.top;
             } else {
-                desiredHeight = defaultEditorHeight;
+                // This number gives some space related to padding of the wrappers and size of the editor
+                const calculatedHeight = window.innerHeight - tabPaneContentNodeRect.top - 53;
+                desiredHeight = calculatedHeight < defaultEditorHeight ? defaultEditorHeight : calculatedHeight;
             }
 
             if (this.state.editorHeight !== desiredHeight) {
@@ -265,6 +345,13 @@ export default class Develop extends Component {
         ]);
     }
 
+    closeRunEventSource() {
+        if (this.runEventSource) {
+            this.runEventSource.close();
+            this.runEventSource = null;
+        }
+    }
+
     async save() {
         const t = this.props.t;
 
@@ -303,23 +390,17 @@ export default class Develop extends Component {
         });
     }
 
-    @withAsyncErrorHandler
-    async stop() {
-        if (this.state.runId) {
-            await axios.post(getUrl(`rest/job-stop/${this.state.runId}`));
-            if (this.runRefreshTimeout) {
-                clearTimeout(this.runRefreshTimeout);
-            }
+    toggleMaximized() {
+        this.setState({isMaximized: !this.state.isMaximized});
+    }
 
-            this.setState({
-                run: null,
-                runId: null
-            });
-        }
+    toggleIntegration() {
+        this.setState({withIntegration: !this.state.withIntegration});
     }
 
     render() {
         const t = this.props.t;
+        const runStatus = this.state.runStatus;
 
         const statusMessageText = this.getFormStatusMessageText();
         const statusMessageSeverity = this.getFormStatusMessageSeverity();
@@ -354,9 +435,11 @@ export default class Develop extends Component {
             }
         }
 
-        const showStopBtn = this.state.run && (this.state.run.status === RunStatus.INITIALIZATION ||
-            this.state.run.status === RunStatus.RUNNING ||
-            this.state.run.status === RunStatus.SCHEDULED);
+        const showStopBtn = (
+            runStatus === RunStatus.INITIALIZATION ||
+            runStatus === RunStatus.RUNNING ||
+            runStatus === RunStatus.SCHEDULED
+        );
 
         let saveAndRunBtn = null;
         if (this.state.saveState === SaveState.SAVED) {
@@ -375,7 +458,7 @@ export default class Develop extends Component {
                 <div
                     className={developStyles.develop + ' ' + (this.state.isMaximized ? developStyles.fullscreenOverlay : '') + ' ' + (this.state.withIntegration ? developStyles.withIntegration : '')}>
                     <div className={developStyles.codePane}>
-                        <Form stateOwner={this} onSubmitAsync={::this.save} format="wide" noStatus>
+                        <Form stateOwner={this} onSubmitAsync={this.save} format="wide" noStatus>
                             <div className={developStyles.tabPane}>
                                 <div id="headerPane" className={developStyles.tabPaneHeader}>
                                     <div className={developStyles.buttons}>
@@ -390,10 +473,10 @@ export default class Develop extends Component {
                                         }
                                         <Button className="btn-primary"
                                                 icon={this.state.isMaximized ? "compress-arrows-alt" : "expand-arrows-alt"}
-                                                onClickAsync={() => this.setState({isMaximized: !this.state.isMaximized})}/>
+                                                onClickAsync={this.toggleMaximized}/>
                                         <Button className="btn-primary"
                                                 icon={this.state.withIntegration ? 'arrow-right' : 'arrow-left'}
-                                                onClickAsync={() => this.setState({withIntegration: !this.state.withIntegration})}/>
+                                                onClickAsync={this.toggleIntegration}/>
                                     </div>
                                     <ul className="nav nav-pills">
                                         {tabs}
@@ -423,8 +506,10 @@ export default class Develop extends Component {
                         </Form>
                     </div>
                     <div className={developStyles.integrationPane}>
-                            <IntegrationTabs onJobChange={this.changeJob.bind(this)} taskId={this.props.entity.id}
-                                             taskHash={this.state.taskVersionId} run={this.state.run}/>
+                        <IntegrationTabs onJobChange={this.changeJob} taskId={this.props.entity.id}
+                                         taskHash={this.state.taskVersionId} runStatus={this.state.runStatus}
+                                         lastOutputChunkId={this.state.chunkCounter}
+                                         runOutputChunks={this.runOutputChunks}/>
 
                     </div>
                 </div>

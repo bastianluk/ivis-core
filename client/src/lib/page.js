@@ -302,6 +302,15 @@ class PanelRoute extends Component {
                     </div>
                 );
 
+                // update the page title
+                let title;
+                if (typeof route.title === 'function') {
+                    title = route.title(resolved, params);
+                } else {
+                    title = route.title;
+                }
+                document.title = em.get('app.title') + " – " + title;
+
                 if (panelInFullScreen) {
                     content = panelContent;
                 } else {
@@ -373,6 +382,9 @@ export class SectionContent extends Component {
         };
 
         this.historyUnlisten = props.history.listen((location, action) => {
+            if (action === "REPLACE") return;
+            if (location.state && location.state.preserveFlashMessage) return;
+
             // noinspection JSIgnoredPromiseFromCall
             this.closeFlashMessage();
         });
@@ -431,7 +443,7 @@ export class SectionContent extends Component {
     }
 
     navigateToWithFlashMessage(path, severity, text) {
-        this.props.history.push(path);
+        this.props.history.push(path, {preserveFlashMessage: true});
         this.setFlashMessage(severity, text);
     }
 

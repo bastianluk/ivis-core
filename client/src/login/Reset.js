@@ -6,7 +6,8 @@ import {Panel} from '../lib/panel';
 import {Link} from 'react-router-dom'
 import {
     Button,
-    ButtonRow, filterData,
+    ButtonRow,
+    filterData,
     Form,
     FormSendMethod,
     InputField,

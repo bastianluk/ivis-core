@@ -1,3 +1,5 @@
+@import "../../scss/variables.scss";
+
 .fullscreenOverlay {
   position: fixed;
   width: 100%;
@@ -54,7 +56,9 @@
 
 
 .integrationTab {
-  display: block;
+  display: flex;
+  flex-flow: column nowrap;
+  flex: 1;
 
   .integrationTabHeader {
     background-color: #E6E9ED;
@@ -62,9 +66,18 @@
     margin-bottom: 3px;
   }
 
-  .integrationTabContent {
+  .integrationTabRunStatus{
+    overflow: auto;
+    border-bottom: 1px solid $border-color;
+  }
+
+
+  .integrationTabRunOutput {
+    padding-top: 5px;
     padding-left: 3px;
     overflow: auto;
+    flex: 1 1 0;
+    border-bottom: 1px solid $border-color;
   }
 
 }
@@ -72,14 +85,14 @@
 .withIntegration {
   .codePane {
     padding-right: 3px;
-    border-right: 1px solid #cccccc;
+    border-right: 1px solid $border-color;
   }
 
   .integrationPane {
-    display: block;
+    display: flex;
+    flex-flow: column nowrap;
   }
 }
-
 
 .tabPane {
 

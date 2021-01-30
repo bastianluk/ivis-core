@@ -81,3 +81,20 @@
   }
 
 }
+
+.timeRangeSelector{
+    color: var(--panel-text-color, inherit);
+    background-color: var(--panel-background-color, inherit);
+}
+
+.header {
+  background-color: var(--panel-background-color-contrast, inherit);
+}
+
+.cursorZoomIn{
+  cursor: zoom-in;
+}
+
+.cursorZoomOut{
+  cursor: zoom-out;
+}

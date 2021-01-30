@@ -39,7 +39,7 @@ exports.seed = (knex, Promise) => (async () => {
         const tsCid = 'ts';
 
         await knex('signal_sets').where({cid: cid}).del();
-        const sigSet = {cid, name, indexing: JSON.stringify({status: 1}), namespace: 1};
+        const sigSet = {cid, name, settings: JSON.stringify({}), state: JSON.stringify({indexing: {status: 1}}), namespace: 1};
         const ids = await knex('signal_sets').insert(sigSet);
         sigSet.id = ids[0];
 
@@ -77,7 +77,7 @@ exports.seed = (knex, Promise) => (async () => {
         });
 
 
-        let ts = startTs;
+        let ts = startTs.clone();
 
         const walkers = {};
         for (const fieldCid of fields) {
@@ -93,7 +93,7 @@ exports.seed = (knex, Promise) => (async () => {
             }
 
             row['id'] = ts.toISOString();
-            row[getColumnName(idMap[tsCid])] = ts.toDate();
+            row[getColumnName(idMap[tsCid])] = ts.format('YYYY-MM-DD HH:mm:ss.SSS');
             ts.add(step);
 
             rows.push(row);

@@ -6,13 +6,13 @@ const knex = require('../lib/knex');
 const hasher = require('node-object-hash')();
 const signalStorage = require('./signal-storage');
 const indexer = require('../lib/indexers/' + config.indexer);
-const {getTypesBySource, SignalSource, AllSignalSources} = require('../../shared/signals');
+const {IndexingStatus, getTypesBySource, SignalSource, AllSignalSources} = require('../../shared/signals');
 const {enforce, filterObject} = require('../lib/helpers');
 const dtHelpers = require('../lib/dt-helpers');
 const interoperableErrors = require('../../shared/interoperable-errors');
 const namespaceHelpers = require('../lib/namespace-helpers');
 const shares = require('./shares');
-const {IndexingStatus} = require('../../shared/signals');
+const {SignalSetType} = require('../../shared/signal-sets');
 const entitySettings = require('../lib/entity-settings');
 
 const allowedKeysCreate = new Set(['cid', 'name', 'description', 'type', 'source', 'indexed', 'settings', 'set', 'namespace', 'weight_list', 'weight_edit', ...em.get('models.signals.extraKeys', [])]);
@@ -213,14 +213,15 @@ async function createTx(tx, context, signalSetId, entity) {
         [id]: entity.type
     };
 
-    switch (entity.source) {
-        case SignalSource.RAW:
-            await signalStorage.extendSchema(signalSet, fieldAdditions);
-            break;
 
-        case SignalSource.JOB:
-            await indexer.onExtendSchema(signalSet, fieldAdditions);
-            break;
+    if (entity.source === SignalSource.JOB) {
+        await indexer.onExtendSchema(signalSet, fieldAdditions);
+    } else if (entity.source === SignalSource.RAW) {
+        if (signalSet.type === SignalSetType.NORMAL) {
+            await signalStorage.extendSchema(signalSet, fieldAdditions);
+        } else {
+            throw new Error("Raw signals aren't supported on computed signal sets");
+        }
     }
 
     return id;
@@ -229,9 +230,9 @@ async function createTx(tx, context, signalSetId, entity) {
 
 async function updateSignalSetStatus(tx, signalSet, result) {
     if (result.reindexRequired) {
-        const indexing = JSON.parse(signalSet.indexing);
-        indexing.status = IndexingStatus.REQUIRED;
-        await tx('signal_sets').where('id', signalSet.id).update('indexing', JSON.stringify(indexing));
+        const state = JSON.parse(signalSet.state);
+        state.indexing.status = IndexingStatus.REQUIRED;
+        await tx('signal_sets').where('id', signalSet.id).update('state', JSON.stringify(state));
     }
 }
 
@@ -251,6 +252,7 @@ async function updateWithConsistencyCheck(context, entity) {
             throw new interoperableErrors.ChangedError();
         }
 
+        entity.set = existing.set;
         await _validateAndPreprocess(context, tx, entity, false);
 
         await namespaceHelpers.validateMove(context, entity, existing, 'signal', 'createSignal', 'delete');
@@ -260,9 +262,9 @@ async function updateWithConsistencyCheck(context, entity) {
 
         if (existing.indexed !== entity.indexed) {
             const signalSet = await tx('signal_sets').where('id', existing.set).first();
-            const indexing = JSON.parse(signalSet.indexing);
-            indexing.status = IndexingStatus.REQUIRED;
-            await tx('signal_sets').where('id', signalSet.id).update('indexing', JSON.stringify(indexing));
+            const state = JSON.parse(signalSet.state);
+            state.indexing.status = IndexingStatus.REQUIRED;
+            await tx('signal_sets').where('id', signalSet.id).update('state', JSON.stringify(state));
         }
 
         await shares.rebuildPermissionsTx(tx, {

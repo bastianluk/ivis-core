@@ -14,7 +14,7 @@ import {withComponentMixins} from "../lib/decorator-helpers";
 import {withTranslation} from "../lib/i18n";
 import {PropType_d3Color, PropType_d3Color_Required, PropType_NumberInRange} from "../lib/CustomPropTypes";
 import {Tooltip} from "./Tooltip";
-import {extentWithMargin, transitionInterpolate, WheelDelta} from "./common";
+import {AreZoomTransformsEqual, extentWithMargin, transitionInterpolate, WheelDelta} from "./common";
 import styles from "./CorrelationCharts.scss";
 
 class TooltipContent extends Component {
@@ -113,7 +113,7 @@ export class StaticBarChart extends Component {
         const forceRefresh = this.prevContainerNode !== this.containerNode
             || !Object.is(prevProps.config, this.props.config);
 
-        const updateZoom = !Object.is(prevState.zoomTransform, this.state.zoomTransform);
+        const updateZoom = !AreZoomTransformsEqual(prevState.zoomTransform, this.state.zoomTransform);
 
         this.createChart(forceRefresh, updateZoom);
         this.prevContainerNode = this.containerNode;
@@ -141,12 +141,10 @@ export class StaticBarChart extends Component {
         if (this.props.config.bars.length === 0) {
             this.statusMsgSelection.text(this.props.t('No data.'));
 
-            this.cursorAreaSelection
-                .on('mouseenter', null)
-                .on('mousemove', null)
-                .on('mouseleave', null);
             this.zoom = null;
             return;
+        } else {
+            this.statusMsgSelection.text("");
         }
 
         //<editor-fold desc="Scales">
@@ -180,10 +178,8 @@ export class StaticBarChart extends Component {
 
         this.drawVerticalBars(this.props.config.bars, this.barsSelection, xScale, yScale);
 
-        // we don't want to change zoom object and cursor area when updating only zoom (it breaks touch drag)
-        if ((forceRefresh || widthChanged) && this.props.withZoom) {
+        if ((forceRefresh || widthChanged) && this.props.withZoom) // no need to update this.zoom object when only updating current zoom (zoomTransform)
             this.createChartZoom(xSize, ySize);
-        }
     }
 
     /** Handles zoom of the chart by user using d3-zoom.
@@ -231,7 +227,12 @@ export class StaticBarChart extends Component {
             .on("zoom", handleZoom)
             .on("end", handleZoomEnd)
             .on("start", handleZoomStart)
-            .wheelDelta(WheelDelta(2));
+            .wheelDelta(WheelDelta(2))
+            .filter(() => {
+                if (d3Event.type === "wheel" && !d3Event.shiftKey)
+                    return false;
+                return !d3Event.ctrlKey && !d3Event.button;
+            });
         this.svgContainerSelection.call(this.zoom);
     }
 
@@ -351,8 +352,6 @@ export class StaticBarChart extends Component {
                         width={250}
                     />
                     }
-                    <g ref={node => this.cursorAreaSelection = select(node)}
-                       transform={`translate(${this.props.margin.left}, ${this.props.margin.top})`}/>
                 </svg>
             </div>
         );

@@ -1,10 +1,41 @@
+'use strict';
+
+const em = require('../../lib/extension-manager');
+const log = require('../../lib/log');
+const array_async = require('../../lib/array-async-helpers');
+
+
 exports.up = (knex, Promise) => (async () => {
+//    await knex.raw('SET FOREIGN_KEY_CHECKS=0');
 
-    await knex.raw('SET FOREIGN_KEY_CHECKS=0');
+    // extension point expects an array of objects containing keys 'tableName' and 'columnName'. These tables/columns contain foreign keys pointing to namespaces.id
+    // note that because ivis and extension migrations happen independently of each other (non-deterministically), some tables may not exist yet - we remove those from the list.
+    let references = em.get('knex.table.namespaceReferences', []);
 
-    const typeTables = ['namespaces', 'templates', 'jobs', 'tasks', 'workspaces', 'panels', 'signals', 'signal_sets', 'users'];
+    // validation
+    references.forEach(ref => {
+        const keys = Object.keys(ref);
+        if (keys.includes('tableName') && keys.includes('columnName'))
+            return;
 
+        const errorMsg = "The array in extension point 'knex.table.namespaceReferences' contains an object which lacks either 'tableName' or 'columnName' property. This is an error. Aborting migration"
 
+        log.error('Migrations', `${errorMsg}\nProblematic object: ${JSON.stringify(ref)}`);
+        throw errorMsg;
+    })
+    
+    references = await array_async.filterAsync(references, async r => {
+        return await knex.schema.hasTable(r.tableName);
+    });
+
+    const ivisReferences = ['namespaces', 'templates', 'jobs', 'tasks', 'workspaces', 'panels', 'signals', 'signal_sets', 'users'];
+    ivisReferences.forEach(r => {
+        references.push({
+            tableName: r,
+            columnName: 'namespace'
+        });
+    });
+    
     async function updateVirt(id) {
         const virtObj = {
             name: 'Virtual',
@@ -16,16 +47,16 @@ exports.up = (knex, Promise) => (async () => {
 
         await knex.table('namespaces').where(virtObj).update({id: id});
 
-        for (let tableName of typeTables) {
-            await knex.table(tableName).where({
-                namespace: oldId
-            }).update({namespace: id});
+        for (const reference of references) {
+            await knex.table(reference.tableName).where({
+                [reference.columnName]: oldId
+            }).update({[reference.columnName]: id});
         }
     }
 
-    for (const tableName of typeTables) {
-        await knex.schema.table(tableName, table => {
-            table.dropForeign('namespace');
+    for (const reference of references) {
+        await knex.schema.table(reference.tableName, table => {
+            table.dropForeign(reference.columnName);
         });
     }
     await knex.schema.table('permissions_namespace', table => {
@@ -41,12 +72,12 @@ exports.up = (knex, Promise) => (async () => {
     // No support for auto_increment on signed int type in knex
     await knex.schema.raw('ALTER TABLE `namespaces` MODIFY `id` int not null auto_increment;');
 
-    for (const tableName of typeTables) {
-        await knex.schema.alterTable(tableName, table => {
-            if (tableName !== 'namespaces') {
-                table.integer('namespace').notNullable().references('namespaces.id').alter();
+    for (const reference of references) {
+        await knex.schema.alterTable(reference.tableName, table => {
+            if (reference.tableName !== 'namespaces') {
+                table.integer(reference.columnName).notNullable().references('namespaces.id').alter();
             } else {
-                table.integer('namespace').references('namespaces.id').alter();
+                table.integer(reference.columnName).references('namespaces.id').alter();
             }
         });
     }
@@ -65,7 +96,7 @@ exports.up = (knex, Promise) => (async () => {
     const maxId =  await knex('namespaces').max('id as maxId').first();
     await knex.raw(`ALTER TABLE namespaces AUTO_INCREMENT=${maxId.maxId}`);
 
-    await knex.raw('SET FOREIGN_KEY_CHECKS=1');
+//    await knex.raw('SET FOREIGN_KEY_CHECKS=1');
 })();
 
 exports.down = (knex, Promise) => (async () => {

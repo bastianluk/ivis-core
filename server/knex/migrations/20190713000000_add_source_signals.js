@@ -8,7 +8,6 @@ exports.up = (knex, Promise) => (async () => {
     await knex.table('signals').whereIn('type', ['derived_painless_date','derived_painless']).update({source: SignalSource.DERIVED});
 
     await knex.table('signals').where('type', 'derived_painless_date').update({type: SignalType.DATE_TIME});
-    // TODO Returned type can't be deduced here, double chosen randomly, check if text isn't better
     await knex.table('signals').where('type', 'derived_painless').update({type: SignalType.DOUBLE});
 
     await knex.table('signals').where('type', 'raw_integer').update({type: SignalType.INTEGER});

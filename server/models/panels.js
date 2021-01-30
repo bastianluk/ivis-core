@@ -2,7 +2,7 @@
 
 const knex = require('../lib/knex');
 const hasher = require('node-object-hash')();
-const { enforce, filterObject } = require('../lib/helpers');
+const {enforce, filterObject} = require('../lib/helpers');
 const dtHelpers = require('../lib/dt-helpers');
 const interoperableErrors = require('../../shared/interoperable-errors');
 const namespaceHelpers = require('../lib/namespace-helpers');
@@ -64,10 +64,11 @@ async function listVisible(context, workspaceId) {
     return await knex.transaction(async tx => {
         if (context.user.admin) {
             return await tx('panels')
+                .innerJoin('workspaces', 'workspaces.id', 'panels.workspace')
                 .where('workspace', workspaceId)
-                .whereNotNull('order')
-                .orderBy('order', 'asc')
-                .select('id', 'name', 'description');
+                .whereNotNull('panels.order')
+                .orderBy('panels.order', 'asc')
+                .select('panels.id', 'panels.name', 'panels.description', 'workspaces.name as workspace');
 
         } else {
             const entityType = entitySettings.getEntityType('panel');
@@ -79,10 +80,11 @@ async function listVisible(context, workspaceId) {
                     },
                     'permitted__panel.entity', 'panels.id'
                 )
+                .innerJoin('workspaces', 'workspaces.id', 'panels.workspace')
                 .where('workspace', workspaceId)
-                .whereNotNull('order')
-                .orderBy('order', 'asc')
-                .select('id', 'name', 'description');
+                .whereNotNull('panels.order')
+                .orderBy('panels.order', 'asc')
+                .select('panels.id', 'panels.name', 'panels.description', 'workspaces.name as workspace');
 
             return entities.filter(panel => shares.isAccessibleByRestrictedAccessHandler(context, 'panel', panel.id, ['view'], 'panels.listVisible'));
         }
@@ -92,14 +94,14 @@ async function listVisible(context, workspaceId) {
 async function listByDTAjax(context, idColumn, id, params) {
     return await dtHelpers.ajaxListWithPermissions(
         context,
-        [{ entityTypeId: 'panel', requiredOperations: ['view'] }],
+        [{entityTypeId: 'panel', requiredOperations: ['view']}],
         params,
         builder => builder
             .from('panels')
             .where(idColumn, id)
             .leftJoin('templates', 'templates.id', 'panels.template')
             .innerJoin('namespaces', 'namespaces.id', 'panels.namespace'),
-        [ 'panels.id', 'panels.order', 'panels.name', 'panels.description', 'templates.name', 'panels.builtin_template', 'panels.created', 'namespaces.name' ],
+        ['panels.id', 'panels.order', 'panels.name', 'panels.description', 'templates.name', 'panels.builtin_template', 'panels.created', 'namespaces.name'],
         {
             orderByBuilder: (builder, orderColumn, orderDir) => {
                 if (orderColumn === 'panels.order') {
@@ -187,7 +189,7 @@ async function create(context, workspaceId, entity) {
 
         await _sortIn(tx, workspaceId, id, entity.orderBefore);
 
-        await shares.rebuildPermissionsTx(tx, { entityTypeId: 'panel', entityId: id });
+        await shares.rebuildPermissionsTx(tx, {entityTypeId: 'panel', entityId: id});
 
         return id;
     });
@@ -225,7 +227,7 @@ async function updateWithConsistencyCheck(context, entity) {
 
         await _sortIn(tx, entity.workspace, entity.id, entity.orderBefore);
 
-        await shares.rebuildPermissionsTx(tx, { entityTypeId: 'panel', entityId: entity.id });
+        await shares.rebuildPermissionsTx(tx, {entityTypeId: 'panel', entityId: entity.id});
     });
 }
 

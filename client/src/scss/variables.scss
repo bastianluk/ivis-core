@@ -6,4 +6,8 @@ $breadcrumb-bg: #f6f7f8;
 $navbar-dark-color: rgba(#fff, .75) !default;
 $navbar-dark-hover-color: #fff !default;
 
+// React-day-picker - used to match colors
+$rdp-color-primary: #3f5efb;
+$rdp-color-secondary: #fc466b;
+
 @import "../../node_modules/@coreui/coreui/scss/_variables.scss";

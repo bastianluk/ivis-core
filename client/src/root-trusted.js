@@ -77,6 +77,8 @@ import ivisConfig from "ivisConfig";
 
 import {TranslationRoot} from "./lib/i18n";
 
+import {SignalSetKind} from "../../shared/signal-sets";
+
 emCommonDefaults.setDefaults(em);
 
 const getStructure = t => {
@@ -453,7 +455,7 @@ const getStructure = t => {
                                     'aggregations': {
                                         title: t('Aggregations'),
                                         link: params => `/settings/signal-sets/${params.signalSetId}/aggregations`,
-                                        visible: resolved => resolved.signalSet.permissions.includes('view'),
+                                        visible: resolved => resolved.signalSet.permissions.includes('view') && resolved.signalSet.kind === SignalSetKind.TIME_SERIES,
                                         panelRender: props => <SignalSetAggregations  signalSet={props.resolved.signalSet} />,
                                         children: {
                                             ":jobId([0-9]+)": {

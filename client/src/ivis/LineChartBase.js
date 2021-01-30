@@ -130,6 +130,8 @@ export class LineChartBase extends Component {
         margin: PropTypes.object,
         withTooltip: PropTypes.bool,
         withBrush: PropTypes.bool,
+        withZoom: PropTypes.bool,
+        zoomUpdateReloadInterval: PropTypes.number, // milliseconds after the zoom ends; set to null to disable updates
         tooltipContentComponent: PropTypes.func,
         tooltipContentRender: PropTypes.func,
         tooltipExtraProps: PropTypes.object,
@@ -144,6 +146,7 @@ export class LineChartBase extends Component {
         compareConfigs: PropTypes.func,
         getLineColor: PropTypes.func,
         lineCurve: PropTypes.func,
+        lineWidth: PropTypes.number,
 
         lineVisibility: PropTypes.func.isRequired,
 
@@ -156,7 +159,8 @@ export class LineChartBase extends Component {
     static defaultProps = {
         getLineColor: color => color,
         lineCurve: d3Shape.curveLinear,
-        withPoints: true
+        withPoints: true,
+        lineWidth: 1.5,
     }
 
     createChart(base, signalSetsData, baseState, abs, xScale) {
@@ -201,7 +205,8 @@ export class LineChartBase extends Component {
 
                     for (const sigConf of sigSetConf.signals) {
                         if (isSignalVisible(sigConf)) {
-                            prevInterpolated.data[sigConf.cid] = {};
+
+                            prevInterpolated.data[sigConf.cid] = prev.data[sigConf.cid];
 
                             for (const agg of signalAggs) {
                                 const delta = (abs.from - prev.ts) / (pts[0].ts - prev.ts);
@@ -221,7 +226,9 @@ export class LineChartBase extends Component {
 
                     for (const sigConf of sigSetConf.signals) {
                         if (isSignalVisible(sigConf)) {
-                            nextInterpolated.data[sigConf.cid] = {};
+                            //nextInterpolated.data[sigConf.cid] = {};
+                            nextInterpolated.data[sigConf.cid] = next.data[sigConf.cid];
+
 
                             for (const agg of signalAggs) {
                                 const delta = (next.ts - abs.to) / (next.ts - pts[pts.length - 1].ts);
@@ -352,6 +359,9 @@ export class LineChartBase extends Component {
                 } else {
                     throw new Error("At most 4 visible y axes are supported.");
                 }
+
+                if (typeof yAxes[axisIdx].yAxisTicksFormat === "function")
+                    yAxis.tickFormat(yAxes[axisIdx].yAxisTicksFormat);
 
                 base.yAxisSelection.append('g').attr("transform", "translate( " + shift + ", 0 )").call(yAxis);
                 base.yAxisSelection.append('text')
@@ -583,6 +593,7 @@ export class LineChartBase extends Component {
                                 .curve(lineCurve);
 
                             const lineColor = this.props.getLineColor(rgb(sigConf.color));
+                            const lineWidth = sigConf.hasOwnProperty("lineWidth") ? sigConf.lineWidth : this.props.lineWidth;
                             this.linePathSelection[sigSetConf.cid][sigCid]
                                 .datum(points[sigSetConf.cid])
                                 .attr('visibility', lineVisible ? 'visible' : 'hidden')
@@ -590,7 +601,7 @@ export class LineChartBase extends Component {
                                 .attr('stroke', lineColor.toString())
                                 .attr('stroke-linejoin', 'round')
                                 .attr('stroke-linecap', 'round')
-                                .attr('stroke-width', 1.5)
+                                .attr('stroke-width', lineWidth)
                                 .attr('d', line);
 
                             if (pointsVisible === PointsVisibility.HOVER || pointsVisible === PointsVisibility.ALWAYS || selectedPointsVisible) {
@@ -678,7 +689,8 @@ export class LineChartBase extends Component {
 
             signalSets[setSpec.cid] = {
                 tsSigCid: setSpec.tsSigCid,
-                signals
+                signals,
+                substitutionOpts: config.substitutionOpts
             };
         }
 
@@ -718,6 +730,8 @@ export class LineChartBase extends Component {
                 compareConfigs={props.compareConfigs}
                 withTooltip={props.withTooltip}
                 withBrush={props.withBrush}
+                withZoom={props.withZoom}
+                zoomUpdateReloadInterval={props.zoomUpdateReloadInterval}
                 contentComponent={props.contentComponent}
                 contentRender={props.contentRender}
                 tooltipContentComponent={this.props.tooltipContentComponent}

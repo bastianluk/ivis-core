@@ -31,6 +31,7 @@ import {withPageHelpers} from "../lib/page-common";
 import {createComponentMixin, withComponentMixins} from "../lib/decorator-helpers";
 import {withTranslation} from "../lib/i18n";
 import {createPermanentLink, createPermanentLinkData} from "../lib/permanent-link";
+import {VIRTUAL_PANEL_ID} from "../../../shared/panels"
 
 export const PanelConfigOwnerContext = React.createContext(null);
 
@@ -299,11 +300,14 @@ export class SaveDialog extends Component {
                 this.disableForm();
                 this.setFormStatusMessage('info', t('Saving ...'));
 
-                // FIXME id can be virtual -> panel doesn't exists so saving will result in error
-                await axios.put(getUrl(`rest/panels-config/${owner.props.panel.id}`), owner.getPanelConfig());
+                if (owner.props.panel.id !== VIRTUAL_PANEL_ID) {
+                    await axios.put(getUrl(`rest/panels-config/${owner.props.panel.id}`), owner.getPanelConfig());
+                    this.clearFormStatusMessage();
+                } else {
+                    this.setFormStatusMessage('warning', t("This panel is virtual and can't be saved."));
+                }
 
                 this.enableForm();
-                this.clearFormStatusMessage();
 
                 this.close();
 
@@ -635,7 +639,7 @@ export class PdfExportDialog extends Component {
 
 
 export const panelConfigMixin = createComponentMixin({
-    deps: [withErrorHandling, panelMenuMixin, withTranslation],
+    deps: [withErrorHandling, panelMenuMixin, withTranslation, withPageHelpers],
     decoratorFn: (TargetClass, InnerClass) => {
         const inst = InnerClass.prototype;
 
@@ -646,6 +650,7 @@ export const panelConfigMixin = createComponentMixin({
 
             self.state._panelConfig = Immutable.Map({
                 params: Immutable.fromJS(props.params),
+                templateParams: Immutable.fromJS(props.panel.templateParams),
                 state: Immutable.fromJS(props.state || {}),
                 savePermitted: false
             });
@@ -724,6 +729,16 @@ export const panelConfigMixin = createComponentMixin({
                     weight: 13
                 };
 
+                if (savePermitted) {
+                    const panelId = this.props.panel.id;
+                    const workspaceId = this.props.panel.workspace;
+                    menuUpdates['settings'] = {
+                        label: t('Edit settings'),
+                        action: () => this.navigateTo(`/settings/workspaces/${workspaceId}/panels/${panelId}/edit`),
+                        weight: 14
+                    };
+                }
+
                 this.updatePanelMenu(menuUpdates);
             });
 
@@ -772,6 +787,19 @@ export const panelConfigMixin = createComponentMixin({
 
         inst.getPanelConfig = function (path = []) {
             const value = this.state._panelConfig.getIn(['params', ...path]);
+            if (Immutable.isImmutable(value)) {
+                return value.toJS();
+            } else {
+                return value;
+            }
+        };
+
+        /**
+         * Gets the specification of template parameters.
+         * It can be used for example in 'configSpec' parameter of 'Legend'. Example of usage can be found in '/examples/templates/scatterplot_legend' template.
+         */
+        inst.getPanelConfigSpec = function (path = []) {
+            const value = this.state._panelConfig.getIn(['templateParams', ...path]);
             if (Immutable.isImmutable(value)) {
                 return value.toJS();
             } else {

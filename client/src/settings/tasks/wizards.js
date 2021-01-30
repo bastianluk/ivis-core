@@ -926,8 +926,8 @@ function getWizardsForType(taskType, subtype = null) {
     }
 }
 
-function getWizard(taskType, wizardType) {
-    const wizardsForType = getWizardsForType(taskType);
+function getWizard(taskType, subtype, wizardType) {
+    const wizardsForType = getWizardsForType(taskType, subtype);
     return wizardsForType ? wizardsForType[wizardType] : null;
 }
 

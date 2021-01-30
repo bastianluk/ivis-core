@@ -34,8 +34,6 @@ import styles from "./styles.scss";
 import moment from "moment";
 import {getUrl} from "./urls";
 import {createComponentMixin, withComponentMixins} from "./decorator-helpers";
-import cudStyles from "../settings/jobs/CUD.scss";
-import ParamTypes from "../settings/ParamTypes";
 
 
 const FormState = {
@@ -308,6 +306,7 @@ class StaticField extends Component {
 }
 
 @withComponentMixins([
+    withTranslation,
     withFormStateOwner
 ])
 class InputField extends Component {
@@ -318,6 +317,7 @@ class InputField extends Component {
         type: PropTypes.string,
         help: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
         format: PropTypes.string,
+        withHints: PropTypes.array,
         disabled: PropTypes.bool
     }
 
@@ -325,11 +325,28 @@ class InputField extends Component {
         type: 'text'
     }
 
+    constructor() {
+        super();
+        this.state = {showHints: false};
+        this.textInput = React.createRef();
+    }
+
+    onFocus() {
+        this.setState({showHints: true});
+    }
+
+    onBlur() {
+        this.setState({showHints: false});
+    }
+
     render() {
         const props = this.props;
+        const t = props.t;
         const owner = this.getFormStateOwner();
-        const id = this.props.id;
+        const id = props.id;
         const htmlId = 'form_' + id;
+        const enableHints = !!(props.withHints && !props.disabled);
+
 
         let type = 'text';
         if (props.type === 'password') {
@@ -347,11 +364,78 @@ class InputField extends Component {
         const value = owner.getFormValue(id);
         if (value === null || value === undefined) console.log(`Warning: InputField ${id} is ${value}`);
 
-        return wrapInput(id, htmlId, owner, props.format, '', props.label, props.help,
-            <input type={type} value={owner.getFormValue(id)} placeholder={props.placeholder} id={htmlId}
-                   className={className} aria-describedby={htmlId + '_help'}
-                   onChange={evt => owner.updateFormValue(id, evt.target.value)} disabled={props.disabled}/>
+        let hintsFuns = {};
+        if (enableHints) {
+            hintsFuns['onFocus'] = ::this.onFocus;
+            hintsFuns['onBlur'] = ::this.onBlur;
+        }
+
+        let inputContent = (
+            <input ref={this.textInput}
+                   type={type}
+                   value={owner.getFormValue(id)}
+                   placeholder={props.placeholder}
+                   id={htmlId}
+                   className={className}
+                   aria-describedby={htmlId + '_help'}
+                   onChange={evt => owner.updateFormValue(id, evt.target.value)}
+                   disabled={props.disabled}
+                   {...hintsFuns}
+            />
         );
+
+        if (enableHints) {
+            inputContent = (
+                <div className="input-group">
+                    {inputContent}
+                    <div className="input-group-append" onMouseDown={evt => evt.preventDefault()}>
+                        <Button label={t('Hints')} className="btn-secondary"
+                                onClickAsync={evt => {
+                                    if (!this.state.showHints) {
+                                        this.textInput.current.focus();
+                                    } else {
+                                        this.textInput.current.blur();
+                                    }
+                                }}/>
+                    </div>
+                </div>
+            );
+
+            let hintsDropdown = null;
+            if (this.state.showHints) {
+                const hints = [];
+                for (const hint of props.withHints) {
+                    hints.push(
+                        <li
+                            key={hint}
+                            className={`list-group-item list-group-item-action list-group-item-light ${styles.inputHint}`}
+                            onClick={evt => {
+                                this.textInput.current.blur();
+                                owner.updateFormValue(id, hint);
+                            }}
+                            onMouseDown={evt => evt.preventDefault()}
+                        >
+                            {hint}
+                        </li>
+                    )
+                }
+
+                hintsDropdown = (
+                    <div className={`list-group ${styles.inputHints}`}>
+                        {hints}
+                    </div>
+                )
+            }
+
+            inputContent = (
+                <div className={styles.inputContainer}>
+                    {inputContent}
+                    {hintsDropdown}
+                </div>
+            );
+        }
+
+        return wrapInput(id, htmlId, owner, props.format, '', props.label, props.help, inputContent);
     }
 }
 
@@ -570,10 +654,6 @@ class ColorPicker extends Component {
         const owner = this.getFormStateOwner();
         const id = this.props.id;
 
-        this.setState({
-            opened: false
-        });
-
         owner.updateFormValue(id, value.rgb);
     }
 
@@ -594,10 +674,186 @@ class ColorPicker extends Component {
                     </div>
                 </div>
                 {this.state.opened &&
-                <div className={styles.colorPickerWrapper}>
-                    <SketchPicker color={color} onChange={::this.selected}/>
-                </div>
+                <>
+                    <div className={styles.overlay} onClick={::this.toggle} />
+                    <div className={styles.colorPickerWrapper}>
+                        <SketchPicker color={color} onChangeComplete={::this.selected} className={styles.dialog} />
+                    </div>
+                </>
                 }
+            </div>
+        );
+    }
+}
+
+@withComponentMixins([
+    withTranslation
+])
+class ColumnSelect extends Component {
+
+    constructor(props) {
+        super(props);
+    }
+
+    static propTypes = {
+        selectedValue: PropTypes.any,
+        onSelect: PropTypes.func,
+        header: PropTypes.string,
+        options: PropTypes.array
+    }
+
+    onKeyUp(event) {
+        const key = event.key;
+        if (key == 'Enter') {
+            event.target.click();
+        }
+    }
+
+    onKeyDown(event) {
+        const key = event.key;
+        if ((key == 'ArrowUp' || key == 'ArrowDown') && event.target === event.currentTarget) {
+            event.currentTarget.querySelector(`.${styles.columnSelectItem}`).focus();
+        } else {
+            if (key == 'ArrowUp') {
+                const previous = event.target.previousSibling;
+                if (previous) {
+                    previous.focus();
+                }
+            } else if (key == 'ArrowDown') {
+                const next = event.target.nextSibling;
+                if (next) {
+                    next.focus();
+                }
+            }
+        }
+    }
+
+    scrollColumnBy(e, y) {
+        e.target.parentNode.getElementsByClassName(styles.columnSelect)[0].scrollBy(0, y);
+    }
+
+    scrollColumnDown(e) {
+        this.scrollColumnBy(e, 50);
+    }
+
+    scrollColumnUp(e) {
+        this.scrollColumnBy(e, -50);
+    }
+
+    render() {
+        const {
+            t,
+            onSelect,
+            options,
+            selectedValue,
+            header
+        } = this.props;
+
+        const optionsElements = options.map(
+            option => {
+                let cls = styles.columnSelectItem;
+                if (option == selectedValue) {
+                    cls += ` ${styles.columnSelectItemSelected}`;
+                }
+                return (
+                    <li key={option} className={cls} tabIndex='-1' onClick={() => onSelect(option)}>
+                        {option}
+                    </li>
+                );
+            }
+        );
+
+        return (
+            <div className={styles.columnSelectWrapper}>
+                {header &&
+                <div className={styles.columnSelectHeader}>{header}</div>
+                }
+                <div className={styles.columnScroller} onClick={::this.scrollColumnUp}>&uarr;</div>
+                <ul className={styles.columnSelect} tabIndex='0' onKeyUp={this.onKeyUp} onKeyDown={this.onKeyDown}>
+                    {optionsElements}
+                </ul>
+                <div className={styles.columnScroller} onClick={::this.scrollColumnDown}>&darr;</div>
+            </div>
+        )
+    }
+}
+
+@withComponentMixins([
+    withTranslation,
+    withFormStateOwner
+])
+class TimePicker extends Component {
+    constructor(props) {
+        super(props);
+    }
+
+    static propTypes = {
+        selectedTime: PropTypes.object,
+        time: PropTypes.object,
+        onChange: PropTypes.func
+    };
+
+    onChange({hour, minute, second}) {
+        const {
+            time
+        } = this.props;
+
+        this.props.onChange(
+            {
+                hour: hour || time.hour,
+                minute: minute || time.minute,
+                second: second || time.second
+            }
+        )
+    }
+
+    onHourChange(hour) {
+        this.onChange({hour: hour})
+    }
+
+    onMinuteChange(minute) {
+        this.onChange({minute: minute})
+    }
+
+    onSecondsChange(second) {
+        this.onChange({second: second})
+    }
+
+    _generateTimeOptions(start, end, step = 1) {
+        const arr = [];
+        for (let i = start; i <= end; i += step) {
+            arr.push(String(i).padStart(2, '0'));
+        }
+        return arr;
+    }
+
+    render() {
+        const {
+            t,
+            time
+        } = this.props;
+
+        const hourOpts = this._generateTimeOptions(0, 23);
+        const minOpts = this._generateTimeOptions(0, 59);
+        const secOpts = minOpts;
+
+        return (
+            <div className={styles.TimePicker}>
+                <ColumnSelect
+                    header={t('h')}
+                    selectedValue={time.hour || hourOpts[0]}
+                    options={hourOpts}
+                    onSelect={::this.onHourChange}/>
+                <ColumnSelect
+                    header={t('min')}
+                    selectedValue={time.minute || minOpts[0]}
+                    options={minOpts}
+                    onSelect={::this.onMinuteChange}/>
+                <ColumnSelect
+                    header={t('sec')}
+                    selectedValue={time.second || secOpts[0]}
+                    options={secOpts}
+                    onSelect={::this.onSecondsChange}/>
             </div>
         );
     }
@@ -607,12 +863,12 @@ class ColorPicker extends Component {
     withTranslation,
     withFormStateOwner
 ])
-class DatePicker extends Component {
+class DateTimePicker extends Component {
     constructor(props) {
         super(props);
 
         this.state = {
-            opened: false
+            dateOpened: false,
         };
     }
 
@@ -624,7 +880,9 @@ class DatePicker extends Component {
         birthday: PropTypes.bool,
         dateFormat: PropTypes.string,
         formatDate: PropTypes.func,
-        parseDate: PropTypes.func
+        parseDate: PropTypes.func,
+        showTime: PropTypes.bool,
+        disabled: PropTypes.bool
     }
 
     static defaultProps = {
@@ -633,32 +891,42 @@ class DatePicker extends Component {
 
     async toggleDayPicker() {
         this.setState({
-            opened: !this.state.opened
+            dateOpened: !this.state.dateOpened
         });
     }
 
-    daySelected(date) {
-        const owner = this.getFormStateOwner();
-        const id = this.props.id;
+    dateTimeChange(date, time) {
         const props = this.props;
+        const {id, showTime} = props;
+
+        const owner = this.getFormStateOwner();
+
+        time = {
+            hour: 0,
+            minute: 0,
+            second: 0,
+            ...time
+        };
 
         if (props.formatDate) {
-            owner.updateFormValue(id, props.formatDate(date));
+            owner.updateFormValue(id, props.formatDate(date, time));
         } else {
             owner.updateFormValue(id, props.birthday ? formatBirthday(props.dateFormat, date) : formatDate(props.dateFormat, date));
         }
 
-        this.setState({
-            opened: false
-        });
+        if (!showTime) {
+            this.setState({
+                dateOpened: false
+            });
+        }
     }
 
     render() {
+        const {t, showTime, id} = this.props;
+
         const props = this.props;
         const owner = this.getFormStateOwner();
-        const id = this.props.id;
         const htmlId = 'form_' + id;
-        const t = props.t;
 
         function BirthdayPickerCaption({date, localeUtils, onChange}) {
             const months = localeUtils.getMonths();
@@ -706,27 +974,42 @@ class DatePicker extends Component {
 
         const className = owner.addFormValidationClass('form-control', id);
 
+        const time = {
+            hour: selectedDate.getHours(),
+            minute: selectedDate.getMinutes(),
+            second: selectedDate.getSeconds()
+        };
+
         return wrapInput(id, htmlId, owner, props.format, '', props.label, props.help,
             <>
-                <div className="input-group">
+                <div className={props.disabled ? '' : "input-group"}>
                     <input type="text" value={selectedDateStr} placeholder={placeholder} id={htmlId}
                            className={className} aria-describedby={htmlId + '_help'}
-                           onChange={evt => owner.updateFormValue(id, evt.target.value)}/>
+                           onChange={evt => owner.updateFormValue(id, evt.target.value)}
+                           disabled={props.disabled}/>
+                    {!props.disabled &&
                     <div className="input-group-append">
                         <Button iconTitle={t('openCalendar')} className="btn-secondary" icon="calendar-alt"
                                 onClickAsync={::this.toggleDayPicker}/>
                     </div>
+                    }
                 </div>
-                {this.state.opened &&
+                {this.state.dateOpened &&
                 <div className={styles.dayPickerWrapper}>
                     <DayPicker
-                        onDayClick={date => this.daySelected(date)}
+                        onDayClick={date => this.dateTimeChange(date, time)}
                         selectedDays={selectedDate}
                         initialMonth={selectedDate}
                         fromMonth={fromMonth}
                         toMonth={toMonth}
                         captionElement={captionElement}
                     />
+                    {showTime &&
+                    <TimePicker
+                        time={time}
+                        onChange={time => this.dateTimeChange(selectedDate, time)}
+                    />
+                    }
                 </div>
                 }
             </>
@@ -820,99 +1103,6 @@ class ButtonRow extends Component {
 
         return (
             <AlignedRow className={className} format={this.props.format}>{this.props.children}</AlignedRow>
-        );
-    }
-}
-
-@withComponentMixins([
-    withTranslation,
-    withFormStateOwner
-])
-class ParamsLoader extends Component {
-
-    static propTypes = {
-        id: PropTypes.string,
-        label: PropTypes.string,
-        prefix: PropTypes.string,
-        taskId: PropTypes.number,
-        taskParams: PropTypes.oneOfType([PropTypes.object, PropTypes.arrayOf(PropTypes.object)]),
-        paramTypesRef: PropTypes.func,
-        help: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
-        format: PropTypes.string
-    };
-
-    constructor(props) {
-        super(props);
-        this.paramTypes = new ParamTypes(props.t);
-
-        if (props.paramTypesRef) {
-            props.paramTypesRef(this.paramTypes);
-        }
-
-        const params = props.taskParams ? props.taskParams : null;
-
-        this.state = {
-            params: params
-        };
-    }
-
-    componentDidMount() {
-        if (this.props.taskId) {
-            this.fetchTaskParams(this.props.taskId);
-        }
-    }
-
-    componentDidUpdate(prevProps) {
-        if (this.props.taskId !== prevProps.taskId) {
-            this.setState({
-                params: null
-            });
-            this.fetchTaskParams(this.props.taskId);
-        }
-    }
-
-    /*
-    onChangeBeforeValidation(mutStateData, key, oldVal, newVal) {
-        const configSpec = this.state.params;
-        if (configSpec) {
-            this.paramTypes.onChange(configSpec, mutStateData, key, oldVal, newVal)
-        }
-    }
-     */
-
-    @withAsyncErrorHandler
-    async fetchTaskParams(taskId) {
-        const result = await axios.get(getUrl(`rest/task-params/${taskId}`));
-        if (this.props.taskId === taskId) {
-            const taskParams = result.data;
-            this.getFormStateOwner().updateForm(mutData => {
-                mutData.setIn([this.props.prefix, 'value'], taskParams);
-                this.paramTypes.adopt(taskParams, mutData);
-            });
-            this.setState({params: result.data});
-        }
-    }
-
-    render() {
-        const props = this.props;
-        const t = props.t;
-        const htmlId = 'form_' + this.props.id;
-        const owner = this.getFormStateOwner();
-
-        const taskParams = this.state.params;
-        const paramsRender = taskParams ? this.paramTypes.render(taskParams, owner) : null;
-        return (
-            <>
-                {taskParams ?
-                    paramsRender &&
-                    <Fieldset label={t('Task parameters')}>
-                        {paramsRender}
-                    </Fieldset>
-                    :
-                    props.taskId &&
-                    <div className="alert alert-info" role="alert">{t('Loading task...')}</div>
-                }
-            </>
         );
     }
 }
@@ -1040,13 +1230,13 @@ class ListCreator extends Component {
         const entries = [];
         const entryIds = owner.getFormValue(id) || [];
 
-        const entryButtonsStyles = withOrder ? cudStyles.entryButtonsWithOrder : cudStyles.entryButtons;
+        const entryButtonsStyles = withOrder ? styles.entryButtonsWithOrder : styles.entryButtons;
         for (let pos = 0; pos < entryIds.length; pos++) {
             const entryId = entryIds[pos];
             const elementId = this.getFormValueId(entryId);
             entries.push(
                 <div key={entryId}
-                     className={cudStyles.entry + (withOrder ? ' ' + cudStyles.withOrder : '') + ' ' + cudStyles.entryWithButtons}>
+                     className={styles.listCreatorEntry + (withOrder ? ' ' + styles.withOrder : '') + ' ' + styles.entryWithButtons}>
                     <div className={entryButtonsStyles}>
                         <Button
                             className="btn-secondary"
@@ -1079,7 +1269,7 @@ class ListCreator extends Component {
                         />
                         }
                     </div>
-                    <div className={cudStyles.entryContent}>
+                    <div className={styles.entryContent}>
                         {React.cloneElement(this.props.entryElement, {id: elementId})}
                     </div>
                 </div>
@@ -1089,7 +1279,7 @@ class ListCreator extends Component {
         return (
             <Fieldset id={id} className={props.classname} help={props.help} flat={props.flat} label={props.label}>
                 {entries}
-                <div key="newEntry" className={cudStyles.newEntry}>
+                <div key="newEntry" className={styles.newListCreatorEntry}>
                     <Button
                         className="btn-secondary"
                         icon="plus"
@@ -1153,6 +1343,7 @@ class TableSelect extends Component {
     static propTypes = {
         dataUrl: PropTypes.string,
         data: PropTypes.array,
+        dataFilter: PropTypes.func, // data_array => filtered_data_array
         columns: PropTypes.array,
         selectionKeyIndex: PropTypes.number,
         selectionLabelIndex: PropTypes.number,
@@ -1239,6 +1430,7 @@ class TableSelect extends Component {
                     <div
                         className={styles.tableSelectTable + (this.state.open ? '' : ' ' + styles.tableSelectTableHidden)}>
                         <Table ref={node => this.table = node} data={props.data} dataUrl={props.dataUrl}
+                               dataFilter={props.dataFilter}
                                columns={props.columns} selectMode={props.selectMode}
                                selectionAsArray={this.props.selectionAsArray} withHeader={props.withHeader}
                                selectionKeyIndex={props.selectionKeyIndex} selection={owner.getFormValue(id)}
@@ -1252,6 +1444,7 @@ class TableSelect extends Component {
                 <div>
                     <div>
                         <Table ref={node => this.table = node} data={props.data} dataUrl={props.dataUrl}
+                               dataFilter={props.dataFilter}
                                columns={props.columns} pageLength={props.pageLength} selectMode={props.selectMode}
                                selectionAsArray={this.props.selectionAsArray} withHeader={props.withHeader}
                                selectionKeyIndex={props.selectionKeyIndex} selection={owner.getFormValue(id)}
@@ -1587,24 +1780,9 @@ const withForm = createComponentMixin({
             scheduleValidateForm(this);
         };
 
-        proto.addOnChangeBeforeValidationListener = function (listener) {
-            this.setState(previousState => {
-                const formSettings = Object.assign({}, previousState.formSettings);
-                let listeners = formSettings.onChangeBeforeValidationListeners;
-                if (listeners) {
-                    listeners = [];
-                    formSettings.onChangeBeforeValidationListeners = listeners;
-                }
-
-                listeners.push(listener);
-                return {formSettings};
-            })
-        };
-
         proto.updateForm = function (mutator) {
             this.setState(previousState => {
                 const onChangeBeforeValidationCallback = this.state.formSettings.onChangeBeforeValidation || {};
-                const onChangeBeforeValidationListeners = this.state.formSettings.onChangeBeforeValidationListeners || [];
 
                 const formState = previousState.formState.withMutations(mutState => {
                     mutState.update('data', stateData => stateData.withMutations(mutStateData => {
@@ -1618,18 +1796,6 @@ const withForm = createComponentMixin({
                             }
                         } else {
                             onChangeBeforeValidationCallback(mutStateData);
-                        }
-
-                        for (const changeListener of onChangeBeforeValidationListeners) {
-                            if (typeof changeListener === 'object') {
-                                for (const key in changeListener) {
-                                    const oldValue = previousState.formState.getIn(['data', key, 'value']);
-                                    const newValue = mutStateData.getIn([key, 'value']);
-                                    changeListener[key](mutStateData, key, oldValue, newValue);
-                                }
-                            } else {
-                                changeListener(mutStateData);
-                            }
                         }
                     }));
 
@@ -1662,7 +1828,6 @@ const withForm = createComponentMixin({
                 const oldValue = previousState.formState.getIn(['data', key, 'value']);
 
                 const onChangeBeforeValidationCallback = this.state.formSettings.onChangeBeforeValidation || {};
-                const onChangeBeforeValidationListeners = this.state.formSettings.onChangeBeforeValidationListeners || [];
 
                 const formState = previousState.formState.withMutations(mutState => {
                     mutState.update('data', stateData => stateData.withMutations(mutStateData => {
@@ -1674,16 +1839,6 @@ const withForm = createComponentMixin({
                             }
                         } else {
                             onChangeBeforeValidationCallback(mutStateData, key, oldValue, value);
-                        }
-
-                        for (const listener of onChangeBeforeValidationListeners) {
-                            if (typeof listener === 'object') {
-                                if (listener[key]) {
-                                    listener[key](mutStateData, key, oldValue, value);
-                                }
-                            } else {
-                                listener(mutStateData, key, oldValue, value);
-                            }
                         }
                     }));
 
@@ -1747,7 +1902,7 @@ const withForm = createComponentMixin({
                         }
                     }
                 } else if (data1 !== data2) {
-                    // console.log(idPrefix);
+                    // console.log(prefix);
                     return true;
                 }
                 return false;
@@ -1946,13 +2101,12 @@ export {
     RadioGroup,
     TextArea,
     ColorPicker,
-    DatePicker,
+    DateTimePicker,
     Dropdown,
     AlignedRow,
     ButtonRow,
     Button,
     ListCreator,
-    ParamsLoader,
     TreeTableSelect,
     TableSelect,
     TableSelectMode,

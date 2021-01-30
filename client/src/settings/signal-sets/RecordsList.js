@@ -67,7 +67,7 @@ export default class RecordsList extends Component {
                     render: data => {
                         if (data !== null) {
                             if (signal.type === SignalType.DATE_TIME) {
-                                return moment(data).toLocaleString();
+                                return moment.utc(data).local().toLocaleString();
                             } else {
                                 return data.toString();
                             }

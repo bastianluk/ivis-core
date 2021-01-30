@@ -12,8 +12,10 @@ import {parentRPC} from "./untrusted";
 import {withComponentMixins} from "./decorator-helpers";
 import {withTranslation} from "./i18n";
 import jQuery from 'jquery';
+import {ThemeContext} from "./theme-context";
+import {Theme} from "../../../shared/themes";
 
-export { withPageHelpers }
+export {withPageHelpers}
 
 function getLoadingMessage(t) {
     return (
@@ -21,6 +23,15 @@ function getLoadingMessage(t) {
             <div className={styles.loadingMessage}>{t('Loading...')}</div>
         </div>
     );
+}
+
+function getTheme(search){
+    const searchParams = new URLSearchParams(search);
+    let theme = Theme.LIGHT;
+    if (searchParams.has('theme')) {
+        theme = searchParams.get('theme') === Theme.DARK ? Theme.DARK : Theme.LIGHT;
+    }
+    return theme;
 }
 
 @withComponentMixins([
@@ -44,6 +55,11 @@ class PanelRoute extends Component {
             jQuery(document.body).removeClass('inside-iframe');
         }
 
+        let theme = getTheme(this.props.location.search);
+        if (theme === Theme.DARK) {
+            jQuery(document.body).addClass('theme-dark');
+        }
+
         const render = (resolved, permissions) => {
             if (resolved && permissions) {
                 const compProps = {
@@ -60,9 +76,14 @@ class PanelRoute extends Component {
                     panel = route.panelRender(compProps);
                 }
 
+
+                let cls = `container-fluid`;
+
                 return (
-                    <div className="container-fluid">
-                        {panel}
+                    <div className={cls}>
+                        <ThemeContext.Provider value={theme}>
+                            {panel}
+                        </ThemeContext.Provider>
                     </div>
                 );
 
@@ -71,7 +92,7 @@ class PanelRoute extends Component {
             }
         };
 
-        return <Resolver route={route} render={render} location={this.props.location} match={this.props.match} />;
+        return <Resolver route={route} render={render} location={this.props.location} match={this.props.match}/>;
     }
 }
 
@@ -85,8 +106,7 @@ export class SectionContent extends Component {
     constructor(props) {
         super(props);
 
-        this.state = {
-        };
+        this.state = {};
     }
 
     static propTypes = {
@@ -121,17 +141,17 @@ export class SectionContent extends Component {
     errorHandler(error) {
         if (error.response && error.response.data && error.response.data.message) {
             console.error(error);
-            this.navigateToWithFlashMessage(this.props.root, 'danger', error.response.data.message);
+            this.setFlashMessage('danger', error.response.data.message);
         } else {
             console.error(error);
-            this.navigateToWithFlashMessage(this.props.root, 'danger', error.message);
+            this.setFlashMessage('danger', error.message);
         }
         return true;
     }
 
     renderRoute(route) {
         const render = props => renderRoute(route, PanelRoute, () => getLoadingMessage(this.props.t), null, props);
-        return <Route key={route.path} exact={route.exact} path={route.path} render={render} />
+        return <Route key={route.path} exact={route.exact} path={route.path} render={render}/>
     }
 
     render() {
@@ -168,7 +188,7 @@ export class Section extends Component {
     render() {
         return (
             <Router basename={getBaseDir()}>
-                <SectionContent root={this.props.root} structure={this.structure} />
+                <SectionContent root={this.props.root} structure={this.structure}/>
             </Router>
         );
     }

@@ -108,6 +108,9 @@ export class ImportExportModalDialog extends Component {
             const code = this.props.onExport();
             this.updateFormValue('code', code);
         }
+        else if (prevProps.visible && !this.props.visible) {
+            this.updateFormValue('code', '');
+        }
     }
 
     doImport() {

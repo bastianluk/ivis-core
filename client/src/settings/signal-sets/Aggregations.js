@@ -70,13 +70,14 @@ export default class AggregationsList extends Component {
             {data: 1, title: t('Id'), render: data => <code>{data}</code>},
             {
                 data: 2, title: t('Name'), render: data => {
-                    return data ? data : 'Not created yet';
+                    return data ? data : t('Not created yet');
                 }
             },
             {data: 3, title: t('Description')},
-            {data: 4, title: t('Status'), render: data => data ? this.indexingStates[data.status] : ''},
+            {data: 4, title: t('Status'), render: data => data ? this.indexingStates[data.indexing.status] : ''},
             {data: 5, title: t('Created'), render: data => data ? moment(data).fromNow() : ''},
-            {data: 7, title: t('Interval'), render: data => `${data.interval} s`},
+            {data: 7, title: t('Interval'), render: data => `${data.interval}`},
+            {data: 7, title: t('Offset'), render: data => `${data.offset}`},
             {
                 actions: data => {
                     const actions = [];
@@ -101,7 +102,7 @@ export default class AggregationsList extends Component {
         ];
 
         return (
-            <Panel title={t('Signal Sets')}>
+            <Panel title={t('Aggregations')}>
                 {tableRestActionDialogRender(this)}
                 {this.state.createPermitted &&
                 <Toolbar>

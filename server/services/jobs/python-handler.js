@@ -2,36 +2,51 @@
 const path = require('path');
 const fs = require('fs-extra-promise');
 const spawn = require('child_process').spawn;
-const {TaskType, taskSubtypeSpecs, subtypesByType} = require('../../../shared/tasks');
+const {PythonSubtypes, defaultSubtypeKey} = require('../../../shared/tasks');
 const readline = require('readline');
 const ivisConfig = require('../../lib/config');
+const em = require('../../lib/extension-manager');
 
 // File name of every build output
 const JOB_FILE_NAME = 'job.py';
 // Directory name where virtual env is saved for task
 const ENV_NAME = 'env';
-const IVIS_PCKG_DIR = path.join(__dirname, '..', '..', 'lib', 'tasks', 'python', 'dist');
+const IVIS_PCKG_DIR = path.join(__dirname, '..', '..', 'lib', 'tasks', 'python', 'ivis', 'dist');
 
 const runningProc = new Map();
+
+const defaultPythonLibs = ['elasticsearch'];
+const taskSubtypeSpecs = {
+    [defaultSubtypeKey]: {
+        libs: defaultPythonLibs
+    },
+    [PythonSubtypes.ENERGY_PLUS]: {
+        libs: [...defaultPythonLibs, 'eppy', 'requests']
+    },
+    [PythonSubtypes.NUMPY]: {
+        libs: [...defaultPythonLibs, 'numpy', 'dtw']
+    }
+};
+
+em.invoke('services.task-handler.python-handler.installSubtypeSpecs', taskSubtypeSpecs);
 
 /**
  * Run job
  * @param id Job id
  * @param runId Run ID, will be used by stop command
  * @param taskDir Directory with the task
- * @param onRequest Callback for handling request msgs from job.
+ * @param onEvent
  * @param onSuccess Callback on successful run
  * @param onFail callback on failed run
  * @returns {Promise<void>}
  */
-async function run({jobId, runId, taskDir, inputData}, onRequest, onSuccess, onFail) {
+async function run({jobId, runId, taskDir, inputData}, onEvent, onSuccess, onFail) {
     try {
-        let output = '';
         let errOutput = '';
 
         const dataInput = {
             params: {},
-            es:{
+            es: {
                 host: `${ivisConfig.elasticsearch.host}`,
                 port: `${ivisConfig.elasticsearch.port}`
             },
@@ -50,7 +65,7 @@ async function run({jobId, runId, taskDir, inputData}, onRequest, onSuccess, onF
         });
 
         jobOutStream.on('line', (input) => {
-            onRequest(input)
+            onEvent('request', input)
                 .then(msg => {
                     jobProc.stdin.write(JSON.stringify(msg) + '\n');
                 })
@@ -72,11 +87,13 @@ async function run({jobId, runId, taskDir, inputData}, onRequest, onSuccess, onF
 
         // Same as with error output
         jobProc.stdout.on('data', (data) => {
-            output += data;
+            const outputStr = data.toString();
+            onEvent('output', outputStr);
         });
 
         const pipeErrHandler = (err) => {
             errOutput += err;
+            onEvent('output', err);
         };
 
         jobProc.stdin.on('error', pipeErrHandler);
@@ -86,16 +103,16 @@ async function run({jobId, runId, taskDir, inputData}, onRequest, onSuccess, onF
 
         jobProc.on('error', (err) => {
             runningProc.delete(runId);
-            const failMsg = [err.toString(), 'Log:\n' + output, 'Error log:\n' + errOutput].join('\n\n');
+            const failMsg = [err.toString(), 'Error log:\n' + errOutput].join('\n\n');
             onFail(failMsg);
         });
 
         jobProc.on('exit', (code, signal) => {
             runningProc.delete(runId);
             if (code === 0) {
-                onSuccess(output, storeConfig);
+                onSuccess(storeConfig);
             } else {
-                const failMsg = [`Run failed with code ${code}`, 'Log:\n' + output, 'Error log:\n' + errOutput].join('\n\n');
+                const failMsg = [`Run failed with code ${code}`, 'Error log:\n' + errOutput].join('\n\n');
                 onFail(failMsg);
             }
         });
@@ -115,8 +132,11 @@ async function remove(id) {
 }
 
 function getPackages(subtype) {
-    const spec = taskSubtypeSpecs[TaskType.PYTHON];
-    return subtype ? spec[subtype].libs : spec.libs;
+    return subtype ? taskSubtypeSpecs[subtype].libs : taskSubtypeSpecs[defaultSubtypeKey].libs;
+}
+
+function getCommands(subtype) {
+    return subtype ? taskSubtypeSpecs[subtype].cmds : taskSubtypeSpecs[defaultSubtypeKey].cmds;
 }
 
 /**
@@ -153,9 +173,10 @@ async function build(config, onSuccess, onFail) {
  * @returns {Promise<void>}
  */
 async function init(config, onSuccess, onFail) {
-    const {id,subtype, code, destDir} = config;
+    const {id, subtype, code, destDir} = config;
     try {
         const packages = getPackages(subtype);
+        const commands = getCommands(subtype);
         const buildDir = path.join(destDir, '..', 'build');
         await fs.emptyDirAsync(buildDir);
 
@@ -165,8 +186,18 @@ async function init(config, onSuccess, onFail) {
         const envDir = path.join(buildDir, ENV_NAME);
 
         const virtDir = path.join(envDir, 'bin', 'activate');
+
+        const cmdsChain = []
+        cmdsChain.push(`${ivisConfig.tasks.python.venvCmd} ${envDir}`)
+        cmdsChain.push(`source ${virtDir}`)
+        cmdsChain.push(`pip install ${packages.join(' ')} `)
+        if (commands) {
+            cmdsChain.push(...commands)
+        }
+        cmdsChain.push(`pip install --no-index --find-links=${IVIS_PCKG_DIR} ivis `)
+        cmdsChain.push(`deactivate`)
         const virtEnv = spawn(
-            `${ivisConfig.tasks.python.venvCmd} ${envDir} && source ${virtDir} && pip install ${packages.join(' ')} && pip install --no-index --find-links=${IVIS_PCKG_DIR} ivis && deactivate`,
+            cmdsChain.join(' && '),
             {
                 shell: '/bin/bash'
             }

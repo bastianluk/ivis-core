@@ -60,7 +60,7 @@ www:
 
 # Enable to use Redis session cache or disable if Redis is not installed
 redis:
-  enabled: true
+  enabled: false
   host: localhost
   port: 6379
   db: 5
@@ -87,11 +87,16 @@ tasks:
   # time between all job's time triggers check in seconds
   checkInterval: 10
   runLogRetentionTime: 1
+  # upper limit for run's output
+  maxRunOutputBytes: 1000000
+  # print info message about reaching output limit to the output
+  printLimitReachedMessage: true
   python:
     # On Centos7 with SCL use: scl enable rh-python36 -- python3 -m venv
     # [Ubuntu 18.04] If there is error message with Unable to symlink '' to '...',
     # specifying full python3 path might fix that
     venvCmd: "/usr/bin/python3 -m venv"
+    subtypes:
 
 roles:
   global:
@@ -169,5 +174,5 @@ roles:
     master:
       name: "Master"
       description: "All permissions"
-      # Note that the ability to "manageScripts" means that one can circumvent the "query" permission on a signal because a script has always access to all signals in the signal set.
+      # Note that the ability to "manageScripts" means that one circumvent the "query" permission on a signal because a script has always access to all signals in the signal set.
       permissions: ["view", "edit", "delete", "insertRecord", "editRecord", "deleteRecord", "query", "share", "reindex", "createSignal", "manageScripts"]

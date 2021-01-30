@@ -12,7 +12,7 @@ import {dotShapeNames} from "./dot_shapes";
 @withComponentMixins([
     withTranslation,
     withErrorHandling
-], ["setMaxDotCount", "setWithTooltip", "getView", "setView"])
+], ["setMaxDotCount", "setWithTooltip", "getView", "setView"], ["getQueries", "getQueriesForSignalSet", "prepareData", "computeExtents", "processDocs", "filterData", "drawChart", "drawDots", "drawHighlightDot"])
 export class BubblePlot extends Component {
     constructor(props) {
         super(props);
@@ -30,10 +30,11 @@ export class BubblePlot extends Component {
                 tsSigCid: PropTypes.string, // for use of TimeContext
                 label_sigCid: PropTypes.string,
                 color: PropTypes.oneOfType([PropType_d3Color_Required(), PropTypes.arrayOf(PropType_d3Color_Required())]),
-                dotShape: PropTypes.oneOf(dotShapeNames), // default = ScatterPlotBase.dotShape
-                dotGlobalShape: PropTypes.oneOf(dotShapeNames), // default = ScatterPlotBase.dotGlobalShape
                 label: PropTypes.string,
                 enabled: PropTypes.bool,
+                dotShape: PropTypes.oneOf(dotShapeNames), // default = ScatterPlotBase.dotShape
+                globalDotShape: PropTypes.oneOf(dotShapeNames), // default = ScatterPlotBase.defaultGlobalDotShape
+                getGlobalDotColor: PropTypes.func, // color modification for global dots (default: lower opacity)
                 tooltipLabels: PropTypes.shape({
                     label_format: PropTypes.func,
                     x_label: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
@@ -47,15 +48,16 @@ export class BubblePlot extends Component {
                     createRegressionForEachColor: PropTypes.bool, // default: false
                     bandwidth: PropTypes.number,    // for LOESS
                     order: PropTypes.number         // for polynomial
-                }))
+                })),
+                filter: PropTypes.object,
             })).isRequired
         }).isRequired,
 
-        maxDotCount: PropTypes.number, // set to negative number for unlimited; prop will get copied to state in constructor, changing it later will not update it, use setMaxDotCount method to update it
+        maxDotCount: PropTypes.number, // prop will get copied to state in constructor, changing it later will not update it, use setMaxDotCount method to update it
         minDotSize: PropTypes.number,
         maxDotSize: PropTypes.number,
         highlightDotSize: PropTypes.number, // radius multiplier
-        colors: PropTypes.arrayOf(PropType_d3Color_Required()), // if specified, uses same cScale for all signalSets that have color_sigCid and config.signalSets[*].color is not array
+        colors: PropTypes.arrayOf(PropType_d3Color_Required()), // if specified, uses same cScale for all signalSets that have color*_sigCid and config.signalSets[*].color is not array
 
         xMinValue: PropTypes.number,
         xMaxValue: PropTypes.number,
@@ -99,7 +101,18 @@ export class BubblePlot extends Component {
         zoomLevelStepFactor: PropTypes.number,
 
         className: PropTypes.string,
-        style: PropTypes.object
+        style: PropTypes.object,
+
+        filter: PropTypes.oneOfType([PropTypes.object, PropTypes.func]),
+        getQueries: PropTypes.func, // see ScatterPlotBase.getQueries for reference
+        getQueriesForSignalSet: PropTypes.func, // see ScatterPlotBase.getQueriesForSignalSet for reference
+        prepareData: PropTypes.func, // see ScatterPlotBase.prepareData for reference
+        computeExtents: PropTypes.func, // see ScatterPlotBase.computeExtents for reference
+        processDocs: PropTypes.func, // see ScatterPlotBase.processDocs for reference
+        filterData: PropTypes.func, // see ScatterPlotBase.filterData for reference
+        drawChart: PropTypes.func, // see ScatterPlotBase.drawChart for reference
+        drawDots: PropTypes.func, // see ScatterPlotBase.drawDots for reference
+        drawHighlightDot: PropTypes.func, // see ScatterPlotBase.drawDots for reference
     };
 
     static defaultProps = { }; // defaults set in ScatterPlotBase
@@ -120,4 +133,14 @@ export class BubblePlot extends Component {
                 <ScatterPlotBase ref={node => this.scatterPlotBase = node} {...this.props} />
         );
     }
+
+    static getQueries = ScatterPlotBase.getQueries;
+    static getQueriesForSignalSet = ScatterPlotBase.getQueriesForSignalSet;
+    static prepareData = ScatterPlotBase.prepareData;
+    static computeExtents = ScatterPlotBase.computeExtents;
+    static processDocs = ScatterPlotBase.processDocs;
+    static filterData = ScatterPlotBase.filterData;
+    static drawChart = ScatterPlotBase.drawChart;
+    static drawDots = ScatterPlotBase.drawDots;
+    static drawHighlightDot = ScatterPlotBase.drawHighlightDot;
 }

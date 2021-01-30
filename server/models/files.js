@@ -20,8 +20,7 @@ const filesDir = path.join(__dirname, '..', 'files');
 
 const ReplacementBehavior = entitySettings.ReplacementBehavior;
 
-const events = require('events');
-const emitter = new events.EventEmitter();
+const {emitter, EventTypes} = require('../lib/files-events');
 
 function enforceTypePermitted(type, subType) {
     enforce(type in entityTypes && entityTypes[type].files && entityTypes[type].files[subType], `File type ${type}:${subType} does not exist`);
@@ -267,7 +266,7 @@ async function createFiles(context, type, subType, entityId, files, replacementB
         }
     }
 
-    emitter.emit('files-change', type, subType, entityId, filesRet);
+    emitter.emit(EventTypes.CHANGE, type, subType, entityId, filesRet);
 
     const resp = {
         uploaded: files.length,
@@ -296,7 +295,7 @@ async function removeFile(context, type, subType, id) {
 
     const filePath = getFilePath(type, subType, file.entity, file.filename);
     await fs.removeAsync(filePath);
-    emitter.emit('files-remove', type, subType,file.entity, file)
+    emitter.emit(EventTypes.REMOVE, type, subType,file.entity, file)
 }
 
 async function copyAllTx(tx, context, fromType, fromSubType, fromEntityId, toType, toSubType, toEntityId) {
@@ -332,7 +331,7 @@ async function removeAllTx(tx, context, type, subType, entityId) {
     }
 
     await tx(getFilesTable(type, subType)).where('entity', entityId).del();
-    emitter.emit('files-remove-all', type, subType, entityId);
+    emitter.emit(EventTypes.REMOVE_ALL, type, subType, entityId);
 }
 
 

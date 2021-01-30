@@ -81,7 +81,7 @@ export default class List extends Component {
                 actions: data => {
                     const id = data[0];
                     const label = data[2];
-                    const perms = data[7];
+                    const perms = data[9];
 
                     if (perms.includes('query')) {
                         return [
@@ -101,13 +101,13 @@ export default class List extends Component {
             },
             { data: 3, title: t('Description') },
             {data: 4, title: t('Type')},
-            { data: 5, title: t('Status'), render: data => this.indexingStates[data.status] },
+            { data: 5, title: t('Status'), render: data => this.indexingStates[data.indexing.status] },
             { data: 6, title: t('Created'), render: data => moment(data).fromNow() },
-            { data: 7, title: t('Namespace') },
+            { data: 8, title: t('Namespace') },
             {
                 actions: data => {
                     const actions = [];
-                    const perms = data[8];
+                    const perms = data[9];
 
                     if (perms.includes('edit')) {
                         actions.push({

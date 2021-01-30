@@ -5,6 +5,33 @@ productId=${productId:-"ivis-core"}
 productLabel=${productLabel:-"IVIS Core"}
 
 case "$hostType" in
+    centos8|centos8-aws)
+        hostTypeLabel="CentOS 8"
+        redisService=redis
+        apacheConf="/etc/httpd/conf.d/${productId}.conf"
+        apacheLogsPath="logs"
+        userId=root
+        groupId=root
+        hostType=centos8-aws
+
+        if hash firewall-cmd 2>/dev/null; then
+            firewallCmdExists=true
+        fi
+        ;;
+
+    centos8-minimal)
+        hostTypeLabel="CentOS 8"
+        redisService=redis
+        apacheConf="/etc/httpd/conf.d/${productId}.conf"
+        apacheLogsPath="logs"
+        userId=root
+        groupId=root
+
+        if hash firewall-cmd 2>/dev/null; then
+            firewallCmdExists=true
+        fi
+        ;;
+
     centos7|centos7-aws)
         hostTypeLabel="CentOS 7"
         redisService=redis
@@ -133,6 +160,26 @@ EOF
 }
 
 
+function installTasksPrerequisities {
+    case "$hostType" in
+        centos8-aws|centos8-minimal)
+            dnf -y install python3 python3-pip
+            ;;
+
+        centos7-aws|centos7-minimal)
+            yum -y install python3 python3-pip
+            ;;
+
+        ubuntu1804)
+            apt-get install -y python3 python3-pip python3-venv
+            ;;
+    esac
+
+    # Install 'ivis' library for tasks
+    python3 -m pip install --user --upgrade setuptools wheel
+    (cd ./server/lib/tasks/python/ && python3 setup.py sdist bdist_wheel)
+}
+
 
 function installPrerequisities {
     # Run as root!
@@ -142,6 +189,15 @@ function installPrerequisities {
     fi
 
     case "$hostType" in
+        centos8-aws|centos8-minimal)
+            dnf -y install epel-release
+
+            curl --silent --location https://rpm.nodesource.com/setup_13.x | bash -
+
+            dnf -y install mariadb-server nodejs redis pwgen gcc-c++ make bzip2 java-1.8.0-openjdk git libXScrnSaver at-spi2-atk gtk3
+            rpm -Uhv --force https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-oss-6.6.1.rpm
+            ;;
+
         centos7-aws|centos7-minimal)
             yum -y install epel-release
 
@@ -152,6 +208,7 @@ function installPrerequisities {
             ;;
 
         ubuntu1804)
+            apt-get install -y curl
             curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
             apt-get install -y mariadb-server nodejs redis pwgen g++ make bzip2 openjdk-8-jre git libatk-bridge2.0 libgtk-3-0
 			TEMP_DEB="$(mktemp)"
@@ -161,6 +218,7 @@ function installPrerequisities {
             ;;
     esac
 
+    installTasksPrerequisities
 
     systemctl start mariadb
     systemctl enable mariadb
@@ -210,8 +268,7 @@ certs:
     fi
 
     mysqlPassword=`pwgen 12 -1`
-    mysqlRoPassword=`pwgen 12 -1`
-    
+
     # Setup MySQL user
     mysql -u root -e "CREATE USER '$productId'@'localhost' IDENTIFIED BY '$mysqlPassword';"
     mysql -u root -e "GRANT ALL PRIVILEGES ON \`$productId\`.* TO '$productId'@'localhost';"
@@ -249,7 +306,6 @@ log:
 
 $apiCerts
 EOT
-    
 
     reinstallAllModules
 
@@ -271,7 +327,7 @@ function doForAllModules {
 function reinstallModules {
     local idx=$1
     echo Reinstalling modules in $idx
-    cd $idx && rm -rf node_modules && npm install
+    cd $idx && rm -rf node_modules && npm install --unsafe-perm
 }
 
 function reinstallAllModules {
@@ -285,7 +341,7 @@ function installHttpd {
     local portAPI="$3"
 
     case "$hostType" in
-        centos7-aws|centos7-minimal)
+        centos7-aws|centos7-minimal|centos8-aws|centos8-minimal)
             yum -y install httpd mod_ssl
             systemctl start httpd
             systemctl enable httpd
@@ -302,7 +358,7 @@ function installHttpd {
                     firewall-cmd --add-port=${portAPI}/tcp --permanent
                 fi
 
-                # Activate the firefall settings
+                # Activate the firewall settings
                 firewall-cmd --reload
             fi
             ;;
@@ -409,7 +465,7 @@ EOT
     fi
 
     case "$hostType" in
-        centos7-aws|centos7-minimal)
+        centos7-aws|centos7-minimal|centos8-aws|centos8-minimal)
             systemctl restart httpd
             ;;
 
@@ -434,7 +490,20 @@ function createCertificates {
     local hostAPI="$3"
     local email="$4"
 
+    local certbotBin="certbot"
+    local certbotPath="/usr/bin/"
+
     case "$hostType" in
+        centos8-aws|centos8-minimal)
+            #
+            certbotPath="/usr/local/bin/"
+            certbotBin="certbot-auto"
+
+            curl -O https://dl.eff.org/certbot-auto
+            mv certbot-auto "${certbotPath}${certbotBin}"
+            chmod 0755 "${certbotPath}${certbotBin}"
+            ;;
+
         centos7-aws|centos7-minimal)
             yum install -y certbot python2-certbot-apache
             ;;
@@ -446,13 +515,13 @@ function createCertificates {
 
     # The --expand flag is to support cases when an existing installation is just being reconfigured
     if [ -n "${hostAPI}" ]; then
-        certbot certonly --agree-tos --email "${email}" --webroot --webroot-path /var/www/html --expand -n -d "${hostTrusted}" -d "${hostSandbox}" -d "${hostAPI}"
+        "${certbotBin}" certonly --agree-tos --email "${email}" --webroot --webroot-path /var/www/html --expand -n -d "${hostTrusted}" -d "${hostSandbox}" -d "${hostAPI}"
     else
-        certbot certonly --agree-tos --email "${email}" --webroot --webroot-path /var/www/html --expand -n -d "${hostTrusted}" -d "${hostSandbox}"
+        "${certbotBin}" certonly --agree-tos --email "${email}" --webroot --webroot-path /var/www/html --expand -n -d "${hostTrusted}" -d "${hostSandbox}"
     fi
 
     # Install cron
-    echo "0 3 * * * /usr/bin/certbot certonly --apache -n -d \"${hostTrusted}\" -d \"${hostSandbox}\" -d \"${hostAPI}\"" > crontab
+    echo "0 3 * * * \"${certbotPath}${certbotBin}\" certonly --apache -n -d \"${hostTrusted}\" -d \"${hostSandbox}\" -d \"${hostAPI}\"" > crontab
     crontab crontab
     rm -rf crontab
 }

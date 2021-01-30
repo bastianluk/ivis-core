@@ -94,6 +94,12 @@ class DependencyPresentError extends InteroperableError {
     }
 }
 
+class ServerValidationError extends InteroperableError {
+    constructor(msg, data) {
+        super('ServerValidationError', msg, data);
+    }
+}
+
 const errorTypes = {
     InteroperableError,
     NotLoggedInError,
@@ -109,7 +115,8 @@ const errorTypes = {
     NamespaceNotFoundError,
     PermissionDeniedError,
     TooManyPointsError,
-    DependencyPresentError
+    DependencyPresentError,
+    ServerValidationError
 };
 
 function deserialize(errorObj) {

@@ -7,6 +7,7 @@ import {withAsyncErrorHandler, withErrorHandling} from "../lib/error-handling";
 import PropTypes from "prop-types";
 import {withComponentMixins} from "../lib/decorator-helpers";
 import {withTranslation} from "../lib/i18n";
+import {TimeIntervalDifference} from "./common";
 
 @withComponentMixins([
     withTranslation,
@@ -25,7 +26,8 @@ export class FrequencyDataLoader extends Component {
             sigCid: PropTypes.string.isRequired,
             tsSigCid: PropTypes.string
         }).isRequired,
-        processData: PropTypes.func.isRequired
+        processData: PropTypes.func.isRequired,
+        maxBucketCount: PropTypes.number
     };
 
     static defaultProps = { };
@@ -40,16 +42,8 @@ export class FrequencyDataLoader extends Component {
             this.props.config.tsSigCid !== prevProps.config.tsSigCid;
 
         const considerTs = !!this.props.config.tsSigCid;
-        if (considerTs) {
-            const prevAbs = this.getIntervalAbsolute(prevProps);
-            const prevSpec = this.getIntervalSpec(prevProps);
-
-            if (prevSpec !== this.getIntervalSpec()) {
-                propsDiff = true;
-            } else if (prevAbs !== this.getIntervalAbsolute()) { // If its just a regular refresh, don't clear the chart
-                propsDiff = true;
-            }
-        }
+        if (considerTs)
+            propsDiff |= TimeIntervalDifference(this, prevProps);
 
         if (propsDiff)
             this.reloadData();
@@ -82,7 +76,8 @@ export class FrequencyDataLoader extends Component {
 
             const aggs = [{
                 sigCid: config.sigCid,
-                agg_type: "terms"
+                agg_type: "terms",
+                maxBucketCount: this.props.maxBucketCount
             }];
             const query = {
                 type: "aggs",

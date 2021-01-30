@@ -10,7 +10,6 @@ const contextHelpers = require('../lib/context-helpers');
 const shares = require('./shares');
 const {RunStatus} = require('../../shared/jobs');
 const jobHandler = require('../lib/task-handler');
-const {getTaskBuildOutputDir} = require('../lib/task-handler');
 const signalSets = require('./signal-sets');
 const allowedKeys = new Set(['name', 'description', 'task', 'params', 'state', 'trigger', 'min_gap', 'delay', 'namespace']);
 
@@ -318,7 +317,7 @@ async function run(context, id) {
     });
 
     const runId = runIds[0];
-    await jobHandler.scheduleRun(id, getTaskBuildOutputDir(job.task), runId);
+    await jobHandler.scheduleRun(id, jobHandler.getTaskBuildOutputDir(job.task), runId);
     return runId;
 }
 

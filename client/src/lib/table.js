@@ -44,6 +44,7 @@ class Table extends Component {
     static propTypes = {
         dataUrl: PropTypes.string,
         data: PropTypes.array,
+        dataFilter: PropTypes.func, // data_array => filtered_data_array
         columns: PropTypes.array,
         selectMode: PropTypes.number,
         selection: PropTypes.oneOfType([PropTypes.array, PropTypes.string, PropTypes.number]),
@@ -129,7 +130,15 @@ class Table extends Component {
     async fetchData(data, callback) {
         // This custom ajax fetch function allows us to properly handle the case when the user is not authenticated.
         const response = await axios.post(getUrl(this.props.dataUrl), data);
-        callback(response.data);
+        callback(this.filterData(response.data));
+    }
+
+    filterData(data) {
+        if (typeof this.props.dataFilter === "function") {
+            data.data = this.props.dataFilter(data.data)
+            data.recordsFiltered = data.data.length;
+        }
+        return data;
     }
 
     @withAsyncErrorHandler
@@ -327,6 +336,8 @@ class Table extends Component {
 
         if (this.props.data) {
             dtOptions.data = this.props.data;
+            if (typeof this.props.dataFilter === "function")
+                dtOptions.data = this.props.dataFilter(dtOptions.data)
         } else {
             dtOptions.serverSide = true;
             dtOptions.ajax = ::this.fetchData;

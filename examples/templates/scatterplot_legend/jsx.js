@@ -11,36 +11,6 @@ const signalSetsStructure = [
     }
 ];
 
-const signalSetsConfigSpec = {
-    "id": "years",
-    "type": "fieldset",
-    "cardinality": "1..n",
-    "children": [
-        {
-            "id": "label",
-            "label": "Label",
-            "type": "string"
-        },
-        {
-            "id": "color",
-            "label": "Color",
-            "type": "color"
-        },
-        {
-            "id": "enabled",
-            "label": "Enabled",
-            "type": "boolean",
-            "default": true
-        },
-        {
-            "id": "sigSetCid",
-            "label": "SignalSet",
-            "type": "signalSet",
-            "help": "Choose one of the \"top:gapminder_YEAR\" signalSets."
-        }
-    ]
-};
-
 @withPanelConfig
 export default class ScatterPlotWithLegend extends Component {
     constructor(props) {
@@ -48,7 +18,8 @@ export default class ScatterPlotWithLegend extends Component {
     }
 
     render() {
-        const config = this.getPanelConfig();
+        const config = this.getPanelConfig(); // gets the current values of panel parameters
+        const yearsConfigSpec = this.getPanelConfigSpec()[0]; // gets the specification of 'years' parameter (the first and only parameter of this template)
 
         const signalSets = [];
         for (const year of config.years) {
@@ -75,7 +46,7 @@ export default class ScatterPlotWithLegend extends Component {
 
         return (
             <>
-                <Legend label="Years" configPath={['years']} withSelector structure={signalSetsStructure} withConfiguratorForAllUsers configSpec={signalSetsConfigSpec}/>
+                <Legend label="Years" configPath={['years']} withSelector structure={signalSetsStructure} withConfiguratorForAllUsers configSpec={yearsConfigSpec}/>
                 <ScatterPlot
                     className={"asd"}
                     config={cnf}
@@ -90,4 +61,3 @@ export default class ScatterPlotWithLegend extends Component {
         );
     }
 }
-

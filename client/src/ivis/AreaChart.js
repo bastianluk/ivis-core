@@ -5,7 +5,7 @@ import {
     isSignalVisible,
     RenderStatus
 } from "./TimeBasedChartBase";
-import {getAxisIdx, LineChartBase} from "./LineChartBase";
+import {getAxisIdx, LineChartBase, lineWithoutPoints} from "./LineChartBase";
 import {select} from "d3-selection";
 import * as d3Shape
     from "d3-shape";
@@ -56,6 +56,7 @@ export class AreaChart extends Component {
         withBrush: PropTypes.bool,
         tooltipContentComponent: PropTypes.func,
         tooltipContentRender: PropTypes.func,
+        tooltipExtraProps: PropTypes.object,
         lineCurve: PropTypes.func,
     }
 
@@ -131,6 +132,9 @@ export class AreaChart extends Component {
                 contentRender={props.contentRender}
                 tooltipContentComponent={this.props.tooltipContentComponent}
                 tooltipContentRender={this.props.tooltipContentRender}
+                tooltipExtraProps={this.props.tooltipExtraProps}
+                getLineColor={color => color.darker()}
+                lineVisibility={lineWithoutPoints}
                 lineCurve={this.props.lineCurve}
             />
         );

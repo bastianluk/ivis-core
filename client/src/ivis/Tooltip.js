@@ -3,8 +3,12 @@
 import React, {Component} from "react";
 import PropTypes from "prop-types";
 import styles from "./Tooltip.scss";
+import {ThemeContext} from "../lib/theme-context";
+import {Theme} from "../../../shared/themes"
 
 export class Tooltip extends Component {
+    static contextType = ThemeContext;
+
     constructor(props) {
         super(props);
 
@@ -15,7 +19,7 @@ export class Tooltip extends Component {
 
     static propTypes = {
         config: PropTypes.any.isRequired,
-        signalSetsData: PropTypes.object,
+        signalSetsData: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
         selection: PropTypes.object,
         mousePosition: PropTypes.object,
         containerWidth: PropTypes.number.isRequired,

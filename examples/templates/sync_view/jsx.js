@@ -48,7 +48,7 @@ export default class SynchronizedViews extends Component {
                 tsSigCid: config.tsSigCid,
                 label_sigCid: config.label_sigCid,
                 color: color,
-                dotGlobalShape: "circle"
+                globalDotShape: "circle"
             }]
         };
         const histogram_config = {
@@ -61,6 +61,33 @@ export default class SynchronizedViews extends Component {
             left: 40, right: 5, top: 5, bottom: 20
         };
         const [xMinValue, xMaxValue] = this.extentWithMargin(this.state.xMinValue, this.state.xMaxValue, 0.02);
+
+        let charts;
+        if (this.state.xMinValue === null || this.state.xMaxValue === null)
+            charts = <div style={{textAlign: 'center'}}>No data.</div>
+        else
+            charts = (<>
+                <ScatterPlot config={scatter_config}
+                             height={400}
+                             margin={margin}
+                             maxDotCount={200}
+                             dotSize={3}
+                             xMinValue={xMinValue}
+                             xMaxValue={xMaxValue}
+                             withToolbar={false}
+                             viewChangeCallback={::this.viewChanged}
+                             ref={node => this.scatter = node}
+                />
+                <HistogramChart config={histogram_config}
+                                height={200}
+                                margin={margin}
+                                xMinValue={xMinValue}
+                                xMaxValue={xMaxValue}
+                                topPaddingWhenZoomed={0.25}
+                                viewChangeCallback={::this.viewChanged}
+                                ref={node => this.histogram = node}
+                />
+            </>)
 
         return (
             <TimeContext initialIntervalSpec={new IntervalSpec("2003-10-30", "2016-04-01", null, null)}>
@@ -75,33 +102,7 @@ export default class SynchronizedViews extends Component {
                     processData={::this.processMinMaxResults} // the :: operator is a shortcut for 'bind' method, so when the 'processMinMaxResults' is called (from inside MinMaxLoader), 'this' inside it is set to this class
                 />
 
-                {this.state.xMinValue !== null && this.state.xMaxValue !== null &&
-                <>
-                    <ScatterPlot config={scatter_config}
-                                 height={400}
-                                 margin={margin}
-                                 maxDotCount={200}
-                                 dotSize={3}
-                                 xMinValue={xMinValue}
-                                 xMaxValue={xMaxValue}
-                                 withToolbar={false}
-                                 viewChangeCallback={::this.viewChanged}
-                                 ref={node => this.scatter = node}
-                    />
-                    <HistogramChart config={histogram_config}
-                                    height={200}
-                                    margin={margin}
-                                    xMinValue={xMinValue}
-                                    xMaxValue={xMaxValue}
-                                    topPaddingWhenZoomed={0.25}
-                                    viewChangeCallback={::this.viewChanged}
-                                    ref={node => this.histogram = node}
-                    />
-                </>
-                }
-                {(this.state.xMinValue === null || this.state.xMaxValue === null) &&
-                    <div style={{textAlign: 'center'}}>No data.</div>
-                }
+                {charts}
             </TimeContext>);
     }
 }

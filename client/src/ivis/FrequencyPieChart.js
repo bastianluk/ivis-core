@@ -6,16 +6,17 @@ import {withErrorHandling} from "../lib/error-handling";
 import PropTypes from "prop-types";
 import {withComponentMixins} from "../lib/decorator-helpers";
 import {withTranslation} from "../lib/i18n";
-import {PropType_d3Color_Required} from "../lib/CustomPropTypes";
+import {PropType_d3Color, PropType_d3Color_Required} from "../lib/CustomPropTypes";
 import {StaticPieChart} from "./PieChart";
 import {FrequencyDataLoader} from "./FrequencyDataLoader";
+import StatusMsg from "./StatusMsg";
 
 @withComponentMixins([
     withTranslation,
     withErrorHandling
 ])
 export class FrequencyPieChart extends Component {
-    constructor(props){
+    constructor(props) {
         super(props);
 
         const t = props.t;
@@ -34,6 +35,9 @@ export class FrequencyPieChart extends Component {
         colors: PropTypes.arrayOf(PropType_d3Color_Required()),
         getLabel: PropTypes.func, // (key, count) => label
         getColor: PropTypes.func, // chooses color from index: (props.color, index) => color
+        maxBucketCount: PropTypes.number,
+        otherLabel: PropTypes.string,
+        otherColor: PropType_d3Color(),
         // for Pie chart
         height: PropTypes.number.isRequired,
         margin: PropTypes.object,
@@ -49,7 +53,8 @@ export class FrequencyPieChart extends Component {
     static defaultProps = {
         getLabel: (key, count) => key,
         getColor: (colors, index) => colors[index % colors.length], // colors = this.props.colors
-        colors: d3Scheme.schemeCategory10
+        colors: d3Scheme.schemeCategory10,
+        otherLabel: "Other"
     };
 
     componentDidUpdate(prevProps, prevState) {
@@ -66,8 +71,7 @@ export class FrequencyPieChart extends Component {
                 data: null,
                 statusMsg: this.props.t('No data.')
             });
-        }
-        else {
+        } else {
             let arcs = data.buckets.map((b, i) => {
                 return {
                     label: this.props.getLabel(b.key, b.count),
@@ -75,8 +79,14 @@ export class FrequencyPieChart extends Component {
                     value: b.count
                 }
             });
+            if (data.sum_other_doc_count && this.props.otherLabel)
+                arcs.push({
+                    label: this.props.otherLabel,
+                    color: this.props.otherColor !== undefined ? this.props.otherColor : this.props.getColor(this.props.colors, arcs.length),
+                    value: data.sum_other_doc_count
+                });
             this.setState({
-                data: { arcs }
+                data: {arcs}
             });
         }
     }
@@ -86,9 +96,9 @@ export class FrequencyPieChart extends Component {
         if (!this.state.data) {
             chart = (
                 <svg ref={node => this.containerNode = node} height={this.props.height} width="100%">
-                    <text textAnchor="middle" x="50%" y="50%" fontFamily="'Open Sans','Helvetica Neue',Helvetica,Arial,sans-serif" fontSize="14px">
+                    <StatusMsg>
                         {this.state.statusMsg}
-                    </text>
+                    </StatusMsg>
                 </svg>
             );
 
@@ -108,7 +118,10 @@ export class FrequencyPieChart extends Component {
         }
         return (
             <div className={this.props.className} style={this.props.style}>
-                <FrequencyDataLoader ref={(node) => this.dataLoader = node} config={this.props.config} processData={::this.processData} />
+                <FrequencyDataLoader ref={(node) => this.dataLoader = node}
+                                     config={this.props.config}
+                                     processData={::this.processData}
+                                     maxBucketCount={this.props.maxBucketCount}/>
                 {chart}
             </div>
         );

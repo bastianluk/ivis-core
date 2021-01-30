@@ -10,11 +10,14 @@ import {
 } from "../../lib/page";
 import {
     Button,
-    ButtonRow, DatePicker,
+    ButtonRow,
+    DateTimePicker,
     filterData,
     Form,
     FormSendMethod,
-    InputField, TableSelect, TableSelectMode,
+    InputField,
+    TableSelect,
+    TableSelectMode,
     withForm,
     withFormErrorHandlers
 } from "../../lib/form";
@@ -25,6 +28,8 @@ import {withComponentMixins} from "../../lib/decorator-helpers";
 import {withTranslation} from "../../lib/i18n";
 import {getSignalTypes} from "../signal-sets/signals/signal-types.js";
 import moment from "moment";
+import interoperableErrors from "../../../../shared/interoperable-errors";
+import {isSignalSetAggregationIntervalValid} from "../../../../shared/validators"
 
 @withComponentMixins([
     withTranslation,
@@ -52,15 +57,21 @@ export default class CUD extends Component {
 
 
     componentDidMount() {
-        if (this.props.job) {
+        const props = this.props;
+
+        if (props.job) {
             this.populateFormValues({
-                ts: this.props.job.params.ts,
-                interval: this.props.job.params.interval
+                ts: props.job.params.ts,
+                interval: props.job.params.interval,
+                offset: props.job.params.offset || ''
             });
         } else {
+            const ts = props.signalSet.settings && props.signalSet.settings.ts;
+
             this.populateFormValues({
-                    ts: null,
-                    interval: null
+                    ts: ts,
+                    interval: '',
+                    offset: ''
                 }
             )
         }
@@ -76,22 +87,33 @@ export default class CUD extends Component {
             state.setIn(['ts', 'error'], null);
         }
 
-        const intervalVal = state.getIn(['interval', 'value']);
-        if (!intervalVal) {
+        const intervalStr = state.getIn(['interval', 'value']).trim();
+        if (!intervalStr) {
             state.setIn(['interval', 'error'], t('Interval must not be empty'));
         } else {
-            // positive integer test
-            if (!/^([1-9]\d*)$/.test(intervalVal)) {
-                state.setIn(['interval', 'error'], t('Interval must be a positive integer'));
+            if (!isSignalSetAggregationIntervalValid(intervalStr)) {
+                state.setIn(['interval', 'error'], t('Interval must be a positive integer and have a unit.'));
             } else {
                 state.setIn(['interval', 'error'], null);
             }
+        }
+
+        const offset = state.getIn(['offset', 'value']);
+        if (offset) {
+            if (!this.parseDateTime(offset)) {
+                state.setIn(['offset', 'error'], t('Offset format is "YYYY-MM-DD hh:mm:ss"'));
+            } else {
+                state.setIn(['offset', 'error'], null);
+            }
+        } else {
+            state.setIn(['offset', 'error'], null);
         }
     }
 
     submitFormValuesMutator(data) {
 
-        data.interval = Number.parseInt(data.interval);
+        data.interval = data.interval.trim();
+        data.offset = data.offset.trim() ? data.offset : null;
 
         const allowedKeys = [
             'interval',
@@ -126,6 +148,7 @@ export default class CUD extends Component {
                 this.navigateBack();
             } else {
                 if (submitAndLeave) {
+                    M
                     this.navigateToWithFlashMessage(`/settings/signal-sets/${this.props.signalSet.id}/aggregations`, 'success', t('Aggregation created'));
                 } else {
                     this.navigateToWithFlashMessage(`/settings/signal-sets/${this.props.signalSet.id}/aggregations/${submitResult}/edit`, 'success', t('Aggregation created'));
@@ -137,6 +160,23 @@ export default class CUD extends Component {
         }
     }
 
+    errorHandler(error) {
+        if (error instanceof interoperableErrors.ServerValidationError) {
+            this.enableForm();
+            this.setFlashMessage('danger', `Creation failed - ${error.message}`);
+            this.clearFormStatusMessage();
+            return true;
+        }
+    }
+
+    parseDateTime = str => {
+        const date = moment(str, 'YYYY-MM-DD HH:mm:ss', true);
+        if (date && date.isValid()) {
+            return date.toDate();
+        } else {
+            return null;
+        }
+    };
 
     render() {
         const t = this.props.t;
@@ -153,6 +193,8 @@ export default class CUD extends Component {
             {data: 3, title: t('Description')},
             {data: 4, title: t('Type'), render: data => signalTypes[data]},
         ];
+
+        const isSignalsetTimeseries = signalSet.settings && signalSet.settings.ts;
 
         return (
             <Panel title={isEdit ? t('Edit Aggregation') : t('Create Aggregation')}>
@@ -182,13 +224,30 @@ export default class CUD extends Component {
                         selectionLabelIndex={2}
                         selectionKeyIndex={1}
                         dataUrl={`rest/signals-table-by-cid/${signalSet.cid}`}
+                        disabled={!!(isEdit || isSignalsetTimeseries)}
+                    />
+
+                    <DateTimePicker
+                        id={'offset'}
+                        label={t("Offset")}
+                        help={t('Where aggregation starts - can be empty for all data aggregation')}
+                        showTime={true}
+                        formatDate={(date, time) => {
+                            const dateTime = moment(date);
+                            dateTime.set(time);
+                            return dateTime.format('YYYY-MM-DD HH:mm:ss');
+                        }}
+                        parseDate={str => this.parseDateTime(str)}
                         disabled={isEdit}
                     />
 
-                    {/*<DatePicker id="offset" label={t("Offset")}  />*/}
-
-                    <InputField id="interval" label={t('Interval')} help={t('Bucket interval in seconds')}
+                    <InputField id="interval"
+                                label={t('Interval')}
+                                help={t('Bucket interval - add s(seconds), m(minute), h(hour), d(day) right after numeric value to select the unit.')}
+                                placeholder={t(`type interval or select from the hints`)}
+                                withHints={['30m', '1h', '12h', '1d', '30d']}
                                 disabled={isEdit}/>
+
 
                     <ButtonRow>
                         {isEdit &&

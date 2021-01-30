@@ -4,16 +4,16 @@ import React, {Component} from "react";
 import {withErrorHandling} from "../lib/error-handling";
 import PropTypes
     from "prop-types";
-import * as d3Color
-    from "d3-color";
-import * as d3Shape
-    from "d3-shape";
+import * as d3Color from "d3-color";
+import * as d3Scheme from "d3-scale-chromatic";
+import * as d3Shape from "d3-shape";
 import {select} from "d3-selection";
 import {StaticLegend} from "./Legend";
 import styles
     from './PieChart.scss'
 import {withComponentMixins} from "../lib/decorator-helpers";
 import {withTranslation} from "../lib/i18n";
+import {PropType_d3Color, PropType_d3Color_Required} from "../lib/CustomPropTypes";
 
 export const LegendPosition = {
     NONE: 0,
@@ -44,10 +44,18 @@ export class StaticPieChart extends Component {
     }
 
     static propTypes = {
-        config: PropTypes.object.isRequired,
+        config: PropTypes.shape({
+            arcs: PropTypes.arrayOf(PropTypes.shape({
+                label: PropTypes.string.isRequired,
+                color: PropType_d3Color(),
+                value: PropTypes.number.isRequired
+            })).isRequired
+        }).isRequired,
         height: PropTypes.number.isRequired,
         margin: PropTypes.object,
         getArcColor: PropTypes.func,
+        getLabelColor: PropTypes.func,
+        colors: PropTypes.arrayOf(PropType_d3Color_Required()),
         legendWidth: PropTypes.number,
         legendPosition: PropTypes.number,
         legendRowClass: PropTypes.string
@@ -71,7 +79,8 @@ export class StaticPieChart extends Component {
         },
         legendWidth: 120,
         legendRowClass: 'col-12',
-        legendPosition: LegendPosition.RIGHT
+        legendPosition: LegendPosition.RIGHT,
+        colors: d3Scheme.schemeCategory10,
     }
 
     componentDidMount() {
@@ -81,7 +90,6 @@ export class StaticPieChart extends Component {
 
     componentDidUpdate(prevProps, prevState, prevContext) {
         const forceRefresh = this.prevContainerNode !== this.containerNode
-            || prevProps.data !== this.props.data
             || prevProps.config !== this.props.config;
 
         this.createChart(forceRefresh);
@@ -90,6 +98,11 @@ export class StaticPieChart extends Component {
 
     componentWillUnmount() {
         window.removeEventListener('resize', this.resizeListener);
+    }
+
+    /** get arc color if it is not specified in the config */
+    getColor(i) {
+        return this.props.colors[i % this.props.colors.length];
     }
 
     createChart(forceRefresh) {
@@ -138,12 +151,14 @@ export class StaticPieChart extends Component {
             .attr('d', arcGen)
             .attr('filter', 'url(#shadow)')
             .attr('fill', 'rgba(0,0,0, 0.3)');
+        shadows.exit().remove();
 
         const arcs = this.pieSelection.selectAll('path').data(pieGen(this.props.config.arcs));
         arcs.enter().append('path')
             .merge(arcs)
             .attr('d', arcGen)
             .attr('fill', d => this.props.getArcColor(d.data.color));
+        arcs.exit().remove();
 
         const labels = this.labelsSelection.selectAll('text').data(pieGen(this.props.config.arcs));
         labels.enter().append('text')
@@ -157,9 +172,15 @@ export class StaticPieChart extends Component {
                 const ratio = Math.floor(d.data.value * 100 / total);
                 return ratio > 5 ? `${ratio}%` : '';
             })
+        labels.exit().remove();
     }
 
     render() {
+        for (const [i, arc] of this.props.config.arcs.entries()) {
+            if (!arc.hasOwnProperty("color"))
+                arc.color = this.getColor(i);
+        }
+
         return (
             <div>
                 <svg className={styles.pie} ref={node => this.containerNode = node} height={this.props.height} width="100%">
@@ -175,7 +196,7 @@ export class StaticPieChart extends Component {
 
                     {this.props.legendPosition === LegendPosition.RIGHT &&
                     <g>
-                        <foreignObject requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility" width={this.props.legendWidth} height="50" x={this.state.width - this.props.margin.right - this.props.legendWidth} y={this.props.margin.top}>
+                        <foreignObject requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility" width={this.props.legendWidth} height={this.props.height} x={this.state.width - this.props.margin.right - this.props.legendWidth} y={this.props.margin.top}>
                             <StaticLegend config={this.props.config.arcs} structure={legendStructure} className={`${styles.legend} ${styles.legendRight}`} rowClassName={this.props.legendRowClass}/>
                         </foreignObject>
                     </g>

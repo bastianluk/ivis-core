@@ -194,7 +194,9 @@ export default class Develop extends Component {
             if (this.state.isMaximized) {
                 desiredHeight = window.innerHeight - tabPaneContentNodeRect.top;
             } else {
-                desiredHeight = defaultEditorHeight;
+                // This number gives some space related to padding of the wrappers and size of the editor
+                const calculatedHeight = window.innerHeight - tabPaneContentNodeRect.top - 53;
+                desiredHeight = calculatedHeight < defaultEditorHeight ? defaultEditorHeight : calculatedHeight;
             }
 
             if (this.state.editorHeight != desiredHeight) {

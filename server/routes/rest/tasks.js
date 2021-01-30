@@ -2,6 +2,7 @@
 
 const passport = require('../../lib/passport');
 const tasks = require('../../models/tasks');
+const builtinTasks = require('../../models/builtin-tasks');
 
 const router = require('../../lib/router-async').create();
 const {castToInteger} = require('../../lib/helpers');
@@ -31,6 +32,10 @@ router.deleteAsync('/tasks/:taskId', passport.loggedIn, passport.csrfProtection,
 
 router.postAsync('/tasks-table', passport.loggedIn, async (req, res) => {
     return res.json(await tasks.listDTAjax(req.context, req.body));
+});
+
+router.getAsync('/builtin-tasks', passport.loggedIn, async (req, res) => {
+    return res.json(await builtinTasks.list());
 });
 
 router.getAsync('/task-params/:taskId', passport.loggedIn, async (req, res) => {

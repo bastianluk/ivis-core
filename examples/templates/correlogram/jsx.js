@@ -26,27 +26,33 @@ class Correlogram extends Component {
         };
 
         const rows = [];
-        for (const [index, sig1] of this.props.config.sigCids.entries()) {
+        for (const [i, sig1] of this.props.config.sigCids.entries()) {
             const row = [];
-            for (const sig2 of this.props.config.sigCids) {
-                if (sig1 !== sig2) {
+            for (const [j, sig2] of this.props.config.sigCids.entries()) {
+                if (i !== j) {
                     const cnf = {
                         signalSets: [{
                             cid: this.props.config.sigSetCid,
                             x_sigCid: sig2,
                             y_sigCid: sig1,
-                            dotGlobalShape: "none"
+                            globalDotShape: "none"
                         }]
                     };
                     if (this.props.config.color_sigCid)
                         cnf.signalSets[0].colorDiscrete_sigCid = this.props.config.color_sigCid;
                     if (this.props.config.ts_signal)
                         cnf.signalSets[0].tsSigCid = this.props.config.ts_signal;
+                        
                     row.push(<ScatterPlot config={cnf}  {...scatterPlotProps} />);
                 }
                 else
-                    row.push(<div className={styles.label} style={{marginLeft: scatterPlotProps.margin.left, marginRight: scatterPlotProps.margin.right, marginTop: scatterPlotProps.margin.top, marginBottom: scatterPlotProps.margin.bottom}}>
-                        {this.props.config.labels[index]}
+                    row.push(<div className={styles.label} 
+                                  style={{
+                                      marginLeft: scatterPlotProps.margin.left, 
+                                      marginRight: scatterPlotProps.margin.right, 
+                                      marginTop: scatterPlotProps.margin.top, 
+                                      marginBottom: scatterPlotProps.margin.bottom}}>
+                        {this.props.config.labels[i]}
                     </div>);
             }
             rows.push(row);
@@ -66,9 +72,6 @@ export default class TestCorrelogram extends Component {
 
     render() {
         const config = this.getPanelConfig();
-
-        if (config.signals.every(x => x === undefined))
-            return (<div>No signals selected in panel configuration.</div>);
 
         const cnf = {
             sigSetCid: config.sigSet,

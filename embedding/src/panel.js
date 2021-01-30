@@ -1,13 +1,15 @@
 'use strict';
 const {VIRTUAL_WORKSPACE_ID, VIRTUAL_PANEL_ID} = require('../../shared/panels');
 
-export function embedPanel(domElementId, ivisSandboxUrlBase, panelId, accessToken, callbacks) {
+export function embedPanel(domElementId, ivisSandboxUrlBase, panelId, accessToken, optionsStr, callbacks) {
     const entityParams = {
         type: 'panel',
         id: panelId
     };
 
-    embedEntity(domElementId, ivisSandboxUrlBase, entityParams, accessToken, callbacks);
+    const options = JSON.parse(optionsStr);
+
+    embedEntity(domElementId, ivisSandboxUrlBase, entityParams, accessToken, options, callbacks);
 }
 
 /***
@@ -17,16 +19,19 @@ export function embedPanel(domElementId, ivisSandboxUrlBase, panelId, accessToke
  * @param templateId
  * @param config With possible properties: {name, description, params}
  * @param accessToken
- * @param callbacks
+ * @param options
+ * @param callback
+ * s
  */
-export function embedTemplate(domElementId, ivisSandboxUrlBase, templateId, config, accessToken, callbacks) {
+export function embedTemplate(domElementId, ivisSandboxUrlBase, templateId, config, accessToken, optionsStr, callbacks) {
     const entityParams = {
         type: 'template',
         id: templateId,
         config: config
     };
 
-    embedEntity(domElementId, ivisSandboxUrlBase, entityParams, accessToken, callbacks);
+    const options = JSON.parse(optionsStr);
+    embedEntity(domElementId, ivisSandboxUrlBase, entityParams, accessToken, options, callbacks);
 }
 
 function restCall(method, url, data, callback) {
@@ -44,7 +49,7 @@ function restCall(method, url, data, callback) {
     xhttp.send(data ? JSON.stringify(data) : null);
 }
 
-function embedEntity(domElementId, ivisSandboxUrlBase, entityParams, accessToken, callbacks) {
+function embedEntity(domElementId, ivisSandboxUrlBase, entityParams, accessToken, options, callbacks) {
 
     function getAnonymousSandboxUrl(path) {
         return ivisSandboxUrlBase + 'anonymous/' + (path || '');
@@ -134,8 +139,14 @@ function embedEntity(domElementId, ivisSandboxUrlBase, entityParams, accessToken
 
         window.addEventListener('message', receiveMessage, false);
 
+        let path = 'panel';
+
+        if (options && options.theme) {
+            path = `panel?theme=${options.theme}`;
+        }
+
         const contentNode = document.createElement('iframe');
-        contentNode.src = getAnonymousSandboxUrl('panel');
+        contentNode.src = getAnonymousSandboxUrl(path);
         contentNode.style.border = '0px none';
         contentNode.style.width = '100%';
         contentNode.style.overflow = 'hidden';

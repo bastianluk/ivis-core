@@ -27,6 +27,8 @@ const filesRest = require('./routes/rest/files');
 const embedRest = require('./routes/rest/embed');
 const settingsRest = require('./routes/rest/settings');
 
+const jobsSse = require('./routes/sse/jobs');
+
 const embedApi = require('./routes/api/embed');
 
 const express = require('express');
@@ -190,6 +192,9 @@ function createApp(type) {
         app.use('/rest', filesRest);
         app.use('/rest', panelsRest);
         app.use('/rest', settingsRest);
+
+
+        app.use('/sse', jobsSse);
 
         if (type === AppType.SANDBOXED) {
             app.use('/rest', embedRest);

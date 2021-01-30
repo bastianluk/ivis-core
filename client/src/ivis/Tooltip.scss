@@ -1,7 +1,8 @@
 .tooltip {
   padding: 15px;
   border-radius: 2px;
-  background: #E6E9ED;
+  background: var(--panel-background-color-contrast, #E6E9ED);
+  color: var(--panel-text-color, inherit);
 
   :global .glyphicon {
     // This is a FIX for Chrome. It goes nuts when one enlarges the zoom level with ctrl-wheel. The elements which are

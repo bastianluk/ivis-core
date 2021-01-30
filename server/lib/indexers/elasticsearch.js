@@ -20,9 +20,11 @@ const {query} = require('./elasticsearch-query');
 const insertBatchSize = 1000;
 
 const indexerExec = em.get('indexer.elasticsearch.exec', path.join(__dirname, '..', '..', 'services', 'indexer-elasticsearch.js'));
+const indexer = require('./elasticsearch-common');
+const knex = require('../../lib/knex');
 
-const events = require('events');
-const emitter = new events.EventEmitter();
+const {emitter, EventTypes}= require('../elasticsearch-events');
+
 
 let indexerProcess;
 
@@ -56,7 +58,7 @@ async function init() {
                     return startedCallback();
                 case 'index':
                     if (msg.cid) {
-                        emitter.emit('index', msg.cid);
+                        emitter.emit(EventTypes.INDEX, msg.cid);
                     }
                     break;
             }
@@ -72,8 +74,21 @@ async function init() {
 
     const sigSets = await signalSets.list();
     for (const sigSet of sigSets) {
+        // TODO non existing indices for computed singal sets are not handled yet
+        // it might cause problems. For example when clearing indices, starting ivis, jobs might expect index to exits.
         if (sigSet.type !== SignalSetType.COMPUTED) {
             await signalSets.index(contextHelpers.getAdminContext(), sigSet.id, IndexMethod.INCREMENTAL);
+        } else {
+            const indexName = getIndexName(sigSet);
+            const exists = await elasticsearch.indices.exists({
+                index: indexName
+            });
+            if (!exists) {
+                await knex.transaction(async tx => {
+                    const signalByCidMap = await signalSets.getSignalByCidMapTx(tx, sigSet);
+                    await indexer.createIndex(sigSet, signalByCidMap);
+                });
+            }
         }
     }
 }
@@ -181,7 +196,7 @@ async function onInsertRecords(sigSetWithSigMap, records) {
         await elasticsearch.bulk({body: bulk});
     }
 
-    emitter.emit('insert', sigSetWithSigMap.cid);
+    emitter.emit(EventTypes.INSERT, sigSetWithSigMap.cid);
     return {};
 }
 
@@ -218,7 +233,7 @@ async function onUpdateRecord(sigSetWithSigMap, existingRecordId, record) {
         body: esDoc
     });
 
-    emitter.emit('update', sigSetWithSigMap.cid);
+    emitter.emit(EventTypes.UPDATE, sigSetWithSigMap.cid);
     return {};
 }
 
@@ -238,7 +253,7 @@ async function onRemoveRecord(sigSet, recordId) {
         }
     }
 
-    emitter.emit('remove', sigSet.cid);
+    emitter.emit(EventTypes.REMOVE, sigSet.cid);
     return {};
 }
 

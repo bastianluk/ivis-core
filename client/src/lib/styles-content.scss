@@ -7,5 +7,37 @@ body {
   padding-right: 0px;
 }
 
+:global(.theme-dark) {
+  --panel-background-color: #252526;
+  --panel-background-color-secondary: #373739;
+  --panel-background-color-contrast: #414141;
+  --panel-text-color: #f1f1f1;
+  --panel-text-color-secondary: #a7a7a7;
+  --panel-accent-color: #0e6198;
+  --panel-font: 12px "Segoe UI", sans-serif;
+
+  background-color: var(--panel-background-color);
+  color: var(--panel-text-color);
+  fill: var(--panel-text-color);
+  font: var(--panel-font);
+
+  :global(.table-striped tbody tr:nth-of-type(odd)) {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  :global(.table-hover tbody tr:hover) {
+    color: var(--panel-text-color-secondary, inherit);
+    background-color: rgba(255, 255, 255, 0.075);
+  }
+
+  :global(.table) {
+    color: var(--panel-text-color, inherit)
+  }
+
+  @at-root :global body.ivis.sandbox#{&} {
+    background-color: var(--panel-background-color, white);
+  }
+}
+
 .loadingMessage {
 }

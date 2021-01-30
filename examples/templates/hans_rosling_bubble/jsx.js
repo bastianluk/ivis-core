@@ -25,7 +25,8 @@ export default class HansRoslingBubblePlot extends Component {
                     color_label: null,
                     dotSize_label: p => "Population: " + d3Format.format(",")(p)
                 },
-                dotGlobalShape: "none"
+                globalDotShape: "circle",
+                getGlobalDotColor: color => color
             }]
         };
 
@@ -38,7 +39,6 @@ export default class HansRoslingBubblePlot extends Component {
                     margin={{ left: 45, right: 5, top: 5, bottom: 40 }}
                     maxDotCount={200}
                     maxDotSize={30}
-                    minDotSizeValue={0}
                     colorValues={["europe", "americas", "africa", "asia"]}
                     xMinValue={0.5}
                     xMaxValue={8.7}

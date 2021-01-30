@@ -1,5 +1,6 @@
 'use strict';
 
+const em = require('../lib/extension-manager');
 const config = require('../lib/config');
 const knex = require('../lib/knex');
 const webpack = require('webpack');
@@ -24,6 +25,7 @@ externals.ivisConfig = 'ivisConfig';
 for (const lib of webpackShared.libs) {
     externals[lib.lib] = lib.id;
 }
+em.invoke('builder.registerLibs', externals);
 
 function getWebpackConfig(moduleId) {
     return {

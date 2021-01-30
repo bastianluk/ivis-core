@@ -1,0 +1,43 @@
+[
+  {
+    "id": "sensors",
+    "label": "Sensors",
+    "type": "fieldset",
+    "cardinality": "1..n",
+    "children": [
+      {
+        "id": "label",
+        "label": "Label",
+        "type": "string"
+      },
+      {
+        "id": "color",
+        "label": "Color",
+        "type": "color"
+      },
+      {
+        "id": "sigSet",
+        "label": "Signal Set",
+        "type": "signalSet"
+      },
+      {
+        "id": "signal",
+        "label": "Signal",
+        "type": "signal",
+        "signalSetRef": "sigSet"
+      },
+      {
+        "id": "tsSigCid",
+        "label": "Time Signal",
+        "type": "signal",
+        "signalSetRef": "sigSet"
+      },
+      {
+        "id": "enabled",
+        "label": "Enabled",
+        "type": "boolean",
+        "default": true
+      }
+    ]
+  }
+]

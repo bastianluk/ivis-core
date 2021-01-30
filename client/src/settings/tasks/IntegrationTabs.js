@@ -16,6 +16,8 @@ import moment from "moment";
 import {withComponentMixins} from "../../lib/decorator-helpers";
 import {withTranslation} from "../../lib/i18n";
 
+const Span = props=> <span>{props.data}</span>
+
 @withComponentMixins([
     withTranslation,
     withForm,
@@ -29,7 +31,9 @@ export default class IntegrationTabs extends Component {
         taskHash: PropTypes.number,
         withBuild: PropTypes.bool,
         onJobChange: PropTypes.func,
-        run: PropTypes.object
+        runOutputChunks: PropTypes.array,
+        lastOutputChunkId: PropTypes.number,
+        runStatus: PropTypes.number
     };
 
     constructor(props) {
@@ -41,12 +45,23 @@ export default class IntegrationTabs extends Component {
             prevPropsTaskHash: this.props.taskHash
         };
         this.refreshTimeout = null;
-
+        this.initForm();
         this.initForm({
-            onChange: (newState, key) => {
+            onChange: (newState) => {
                 this.props.onJobChange(newState.formState.getIn(['data', 'developJob', 'value']));
             }
         });
+
+
+        const t = props.t;
+        this.jobColumns = [
+            {data: 0, title: t('#')},
+            {data: 1, title: t('Name')},
+            {data: 2, title: t('Description')},
+            {data: 4, title: t('Created'), render: data => moment(data).fromNow()},
+            {data: 5, title: t('Namespace')}
+        ];
+
     }
 
     @withAsyncErrorHandler
@@ -59,7 +74,7 @@ export default class IntegrationTabs extends Component {
             task: task
         });
 
-        if (task.build_state == null
+    if (task.build_state == null
             || task.build_state === BuildState.SCHEDULED
             || task.build_state === BuildState.PROCESSING) {
             this.refreshTimeout = setTimeout(() => {
@@ -83,8 +98,12 @@ export default class IntegrationTabs extends Component {
             this.state.task !== nextState.task ||
             this.state.jobId !== nextState.jobId ||
             this.state.runId !== nextState.runId ||
-            this.props.run !== nextProps.run ||
-            this.state.activeTab !== nextState.activeTab
+            this.props.runOutputChunks !== nextProps.runOutputChunks ||
+            this.props.lastOutputChunkId !== nextProps.lastOutputChunkId ||
+            this.props.runStatus !== nextProps.runStatus ||
+            this.state.activeTab !== nextState.activeTab ||
+            this.state.formState !== nextState.formState
+
     }
 
 
@@ -179,11 +198,7 @@ export default class IntegrationTabs extends Component {
                     const warnings = [];
                     let idx = 0;
                     if (task.build_output && task.build_output.warnings && task.build_output.warnings.length > 0) {
-                        for (const
-                            warning
-                            of
-                            task.build_output.warnings
-                            ) {
+                        for (const warning of task.build_output.warnings) {
                             warnings.push(<div key={idx}>{warning}</div>);
                             idx++;
                         }
@@ -210,7 +225,7 @@ export default class IntegrationTabs extends Component {
 
         return (
             <div className={developStyles.integrationTab}>
-                <div className={developStyles.integrationTabContent}>
+                <div className={developStyles.integrationTabRunOutput}>
                     {buildContent}
                 </div>
             </div>
@@ -218,59 +233,69 @@ export default class IntegrationTabs extends Component {
     }
 
     getRunContent(t) {
-        let runContent = null;
-        const run = this.props.run;
-        const jobColumns = [
-            {data: 0, title: t('#')},
-            {data: 1, title: t('Name')},
-            {data: 2, title: t('Description')},
-            {data: 4, title: t('Created'), render: data => moment(data).fromNow()},
-            {data: 5, title: t('Namespace')}
-        ];
+        let runStatusElement = null;
+        const status = this.props.runStatus;
 
-        const jobTable =
-            <Form stateOwner={this} format="wide" noStatus>
-                <TableSelect id="developJob" label={t('Job for testing')} format="wide" withHeader dropdown
-                             dataUrl={`rest/jobs-by-task-table/${this.props.taskId}`} columns={jobColumns}
-                             selectionLabelIndex={1}/>
-            </Form>;
 
-        if (!run) {
-            runContent = (
-                <div>{t('Not run in this panel yet.')}</div>
+        if (status == null) {
+            runStatusElement = (
+                <div className='p-1 text-info'>{t('Not run in this panel yet.')}</div>
             );
         } else {
-            switch (run.status) {
+            switch (status) {
                 case (RunStatus.INITIALIZATION):
                 case (RunStatus.SCHEDULED):
-                    runContent = (
-                        <div>{t('Loading...')}</div>
+                    runStatusElement = (
+                        <div className='p-1 text-info'>{t('Loading...')}</div>
                     );
                     break;
                 case (RunStatus.RUNNING):
-                    runContent = (
-                        <div>{t('Running...')}</div>
+                    runStatusElement = (
+                        <div className='p-1 text-info'>{t('Running...')}</div>
                     );
                     break;
                 case (RunStatus.FAILED):
+                    runStatusElement = (
+                        <div className='p-1 text-danger'>{t('Finished with error')}</div>
+                    );
+                    break;
                 case (RunStatus.SUCCESS):
-                    if (run.output) {
-                        runContent = (
-                            <pre><code>{run.output}</code></pre>
-                        );
-                    }
+                    runStatusElement = (
+                        <div className='p-1 text-success'>{t('Finished successfully')}</div>
+                    );
                     break;
             }
 
         }
 
+        let runOutput = '';
+        if (this.props.runOutputChunks && (this.props.runOutputChunks.length > 0)) {
+            runOutput = this.props.runOutputChunks.map((output) => {
+                //return <span key={output.id}>{output.data}</span>;
+                return <Span key={output.id} data={output.data}/>;
+            });
+        } else if (status && status.output) {
+            runOutput = status.output;
+        }
+
         return (
             <div className={developStyles.integrationTab}>
                 <div className={developStyles.integrationTabHeader}>
-                    {jobTable}
+                    <Form stateOwner={this} format="wide" noStatus>
+                        <TableSelect id="developJob" label={t('Job for testing')} format="wide" withHeader dropdown
+                                     dataUrl={`rest/jobs-by-task-table/${this.props.taskId}`} columns={this.jobColumns}
+                                     selectionLabelIndex={1}/>
+                    </Form>
                 </div>
-                <div className={developStyles.integrationTabContent}>
-                    {runContent}
+                <div className={developStyles.integrationTabRunStatus}>
+                    {runStatusElement}
+                </div>
+                <div className={developStyles.integrationTabRunOutput}>
+                    <pre>
+                        <code>
+                            {runOutput}
+                        </code>
+                    </pre>
                 </div>
             </div>
         );

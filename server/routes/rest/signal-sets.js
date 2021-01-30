@@ -184,10 +184,6 @@ router.postAsync('/signal-sets/:signalSetId/aggregations', passport.loggedIn, pa
     return res.json(await signalSetsAggregations.create(req.context, castToInteger(req.params.signalSetId), req.body));
 });
 
-router.postAsync('/signal-sets-table', passport.loggedIn, async (req, res) => {
-    return res.json(await signalSets.listDTAjax(req.context, req.body));
-});
-
 router.postAsync('/signal-set-aggregations-table/:signalSetId', passport.loggedIn, async (req, res) => {
     return res.json(await signalSetsAggregations.listDTAjax(req.context, castToInteger(req.params.signalSetId), req.body));
 });

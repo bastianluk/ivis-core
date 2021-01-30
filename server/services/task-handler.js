@@ -2,6 +2,8 @@
 
 const config = require('../lib/config');
 const knex = require('../lib/knex');
+const em = require('../lib/extension-manager');
+
 const {JobState, RunStatus, HandlerMsgType, JobMsgType} = require('../../shared/jobs');
 const {TaskType, BuildState, isTransitionState} = require('../../shared/tasks');
 const {SignalSetType} = require('../../shared/signal-sets');
@@ -16,14 +18,11 @@ const createSignal = require('../models/signals').createTx;
 const {resolveAbs, getFieldsetPrefix} = require('../../shared/param-types-helpers');
 
 const es = require('../lib/elasticsearch');
-const STATE_FIELD = require('../lib/task-handler').esConstants.STATE_FIELD;
-const INDEX_JOBS = require('../lib/task-handler').esConstants.INDEX_JOBS;
-const TYPE_JOBS = require('../lib/task-handler').esConstants.TYPE_JOBS;
+const {TYPE_JOBS, INDEX_JOBS, STATE_FIELD} = require('../lib/task-handler').esConstants
+
+const {getSuccessEventType, getFailEventType, getOutputEventType, getStopEventType} = require('../lib/task-events');
 
 const LOG_ID = 'Task-handler';
-
-// Job handlers
-const pythonHandler = require('./jobs/python-handler');
 
 // Stores all incoming messages, meant to be processed
 const workQueue = [];
@@ -37,18 +36,15 @@ const inProcessMsgs = new Map();
 // Check interval is in seconds, so here is conversion
 const checkInterval = config.tasks.checkInterval * 1000;
 
+// Job handlers
+const pythonHandler = require('./jobs/python-handler');
 const handlers = new Map();
 handlers.set(TaskType.PYTHON, pythonHandler);
 
+em.invoke('services.task-handler.installHandlers', handlers);
+
 const events = require('events');
 const emitter = new events.EventEmitter();
-
-module.exports = class RunFailedError extends Error {
-    constructor(msg, data) {
-        super(msg);
-        this.data = data;
-    }
-};
 
 
 class HandlerNotFoundError extends Error {
@@ -60,6 +56,13 @@ class HandlerNotFoundError extends Error {
 
 /* Message processing */
 process.on('message', handleMsg);
+
+function emit(eventType, data) {
+    process.send({
+        type: eventType,
+        data: data
+    })
+}
 
 /**
  * The incoming messages logistic.
@@ -140,6 +143,8 @@ async function stop(msg) {
             }
         }
     }
+
+    emit(getStopEventType(runId))
 }
 
 /**
@@ -287,39 +292,54 @@ async function getEntitiesFromParams(job, jobParams, taskParams) {
                         throw new Error(`Signal set's cid for parameter ${param.id} not specified.`);
                     }
 
-                    const signalCid = jobParamsSpec[param.id];
-                    if (!signalCid) {
+                    let signalCids = jobParamsSpec[param.id];
+
+                    if (!signalCids) {
                         throw new Error(`Signal's cid for parameter ${param.id} not specified.`);
                     }
 
-                    if (entities.signals[signalSetCid]) {
-                        if (entities.signals[signalSetCid][signalCid]) {
-                            // info already stored
-                            continue;
+                    // Single select
+                    if (!Array.isArray(signalCids)) {
+                        signalCids = [signalCids];
+                    }
+
+                    for (const signalCid of signalCids) {
+                        if (entities.signals[signalSetCid]) {
+                            if (entities.signals[signalSetCid][signalCid]) {
+                                // info already stored
+                                continue;
+                            }
+                        } else {
+                            entities.signals[signalSetCid] = {};
                         }
-                    } else {
-                        entities.signals[signalSetCid] = {};
+
+                        const signalSet = await knex('signal_sets').select('id').where({cid: signalSetCid}).first();
+                        if (!signalSet) {
+                            throw new Error(`Signal set with cid ${param.cid} not found.`);
+                        }
+
+
+                        const signal = await knex('signals').where({cid: signalCid, set: signalSet.id}).first();
+                        if (!signal) {
+                            throw new Error(`Signal with cid ${signalCid} in set ${signalSet.id} not found.`);
+                        }
+
+                        entities.signals[signalSetCid][signalCid] = getSignalEntitySpec(signal);
                     }
-
-                    const signalSet = await knex('signal_sets').select('id').where({cid: signalSetCid}).first();
-                    if (!signalSet) {
-                        throw new Error(`Signal set with cid ${param.cid} not found.`);
-                    }
-
-
-                    const signal = await knex('signals').where({cid: signalCid, set: signalSet.id}).first();
-                    if (!signal) {
-                        throw new Error(`Signal with cid ${signalCid} in set ${signalSet.id} not found.`);
-                    }
-
-                    entities.signals[signalSetCid][signalCid] = getSignalEntitySpec(signal);
                     break;
                 }
 
                 case 'fieldset': {
                     if (param.children) {
                         let idx = 0;
-                        for (const child of jobParamsSpec[param.id]) {
+
+                        let jobParamSpec = jobParamsSpec[param.id];
+
+                        if (!Array.isArray(jobParamSpec)) {
+                            jobParamSpec = [jobParamSpec];
+                        }
+
+                        for (const child of jobParamSpec) {
                             await loadFromParams(getFieldsetPrefix(prefix, param, idx), child, param.children);
                             idx++;
                         }
@@ -372,14 +392,12 @@ async function checkAndSetMsgRunStatus(runId, status, output) {
 }
 
 async function getOwnedEntities(job) {
-    const owned = {};
+    const owned = {
+        signalSets: {}
+    };
     const ownedSignalSets = await getSignalSetsOwnedByJob(job.id);
     for (const signalSet of ownedSignalSets) {
-        if (!owned.signalSets) {
-            owned.signalSets = [];
-        }
-
-        owned.signalSets.push(signalSet.cid);
+        owned.signalSets[signalSet.cid] = {}
     }
 
     return owned;
@@ -748,31 +766,7 @@ async function handleInit(workEntry) {
 /*--------------------------*/
 
 /* ---------- RUN ---------- */
-/**
- * Callback for successful run.
- * @param jobId
- * @param runId
- * @param runData
- * @param output
- * @param config
- * @returns {Promise<void>}
- */
-async function onRunSuccess(jobId, runId, runData, output, config) {
 
-    inProcessMsgs.delete(runId);
-    jobRunning.delete(jobId);
-    runData.finished_at = new Date();
-    runData.status = RunStatus.SUCCESS;
-    runData.output = output ? output : '';
-    try {
-        await updateRun(runId, runData);
-        if (config) {
-            await storeRunState(config);
-        }
-    } catch (err) {
-        log.error(LOG_ID, err);
-    }
-}
 
 /**
  * Run fail handler. Used as the exit point for run msg handling process.
@@ -788,7 +782,7 @@ async function onRunFail(jobId, runId, runData, errMsg) {
     inProcessMsgs.delete(runId);
 
     await handleRunFail(jobId, runId, runData, errMsg);
-
+    emit(getFailEventType(runId), errMsg);
 }
 
 async function handleRunFail(jobId, runId, runData, errMsg) {
@@ -801,6 +795,8 @@ async function handleRunFail(jobId, runId, runData, errMsg) {
         runData.status = RunStatus.FAILED;
         runData.output = errMsg ? errMsg : '';
         try {
+            const run = await knex('job_runs').select('output').where('id', runId).first();
+            runData.output = [errMsg, `Log:\n${run.output}`].join('\n\n');
             await updateRun(runId, runData);
         } catch (err) {
             log.error(LOG_ID, err);
@@ -817,13 +813,8 @@ function parseRequest(req) {
     return JSON.parse(req);
 }
 
-/**
- * This function processes all requests coming from the type handlers.
- * @param jobId
- * @param requestStr
- * @returns {Promise<Object>}
- */
-async function onRunRequest(jobId, requestStr) {
+
+async function handleRequest(jobId, requestStr) {
     let response = {};
 
     if (!requestStr) {
@@ -874,7 +865,7 @@ async function onRunRequest(jobId, requestStr) {
                 }
                 break;
             default:
-                response.error = "Type not recognized";
+                response.error = `Type ${request.type} not recognized`;
                 break;
         }
     } catch (error) {
@@ -898,6 +889,7 @@ async function onRunRequest(jobId, requestStr) {
  * Uses same data format as web creation
  * @param jobId
  * @param signalSets
+ * @param signalsSpec
  * @returns {Promise<IndexInfo>} Created indices and mapping
  */
 async function processCreateRequest(jobId, signalSets, signalsSpec) {
@@ -1028,6 +1020,114 @@ async function storeRunState(id, state) {
     }
 }
 
+function createRunHandler(jobId, runId) {
+    const runData = {};
+    runData.started_at = new Date();
+
+    const maxOutput = config.tasks.maxRunOutputBytes || 1000000;
+    let outputBytes = 0;
+    let limitReached = false;
+    let outputBuffer = [];
+    let timer;
+
+    return {
+        onRunEvent,
+        onRunSuccess,
+        onRunFail: onRunFailFromRunningStatus
+    }
+
+    async function onRunFailFromRunningStatus(errMsg) {
+        await cleanBuffer();
+        await onRunFail(jobId, runId, runData, errMsg);
+    }
+
+    /**
+     * Callback for successful run.
+     * @param config
+     * @returns {Promise<void>}
+     */
+    async function onRunSuccess(config) {
+        await cleanBuffer();
+
+        inProcessMsgs.delete(runId);
+        jobRunning.delete(jobId);
+        runData.finished_at = new Date();
+        runData.status = RunStatus.SUCCESS;
+        try {
+            await updateRun(runId, runData);
+            if (config) {
+                await storeRunState(config);
+            }
+        } catch (err) {
+            log.error(LOG_ID, err);
+        }
+        emit(getSuccessEventType(runId));
+    }
+
+    async function cleanBuffer() {
+        try {
+            if (outputBuffer.length > 0) {
+                let output = [...outputBuffer];
+                outputBuffer = [];
+                emit(getOutputEventType(runId), output);
+                await knex('job_runs').update({output: knex.raw('CONCAT(COALESCE(`output`,\'\'), ?)', output.join(''))}).where('id', runId);
+            }
+            timer = null;
+        } catch (e) {
+            log.error(LOG_ID, `Output handling for the run ${runId} failed`, e);
+            outputBuffer = [];
+            timer = null;
+        }
+    }
+
+    async function onRunEvent(type, data) {
+        switch (type) {
+            case 'output':
+                try {
+                    if (!limitReached) {
+                        let byteLength = Buffer.byteLength(data, 'utf8');
+                        outputBytes += byteLength
+                        if (outputBytes >= maxOutput) {
+                            limitReached = true;
+                            if (config.tasks.printLimitReachedMessage === true) {
+                                try {
+                                    await knex('job_runs').update({output: knex.raw('CONCAT(`output`, \'INFO: max output storage capacity reached\')')}).where('id', runId);
+
+                                    const maxMsg = 'INFO: max output capacity reached'
+                                    if (!timer) {
+                                        emit(getOutputEventType(runId), maxMsg);
+                                    } else {
+                                        outputBuffer.push(maxMsg);
+                                    }
+                                } catch (e) {
+                                    log.error(LOG_ID, `Output handling for the run ${runId} failed`, e);
+                                }
+                            }
+                        } else {
+                            outputBuffer.push(data);
+                            // TODO Don't know how well this will scale
+                            // --   it might be better to append to a file, but this will require further syncing
+                            // --   as we need full output for task development in the UI, not only output after the register of listener
+                            // --   therefore keeping it this way for now
+                            if (!timer) {
+                                timer = setTimeout(cleanBuffer, 1000);
+                            }
+                        }
+                    }
+
+                } catch (e) {
+                    log.error(LOG_ID, `Output handling for the run ${runId} failed`, e);
+                }
+                break;
+            case 'request':
+                return await handleRequest(jobId, data);
+            default:
+                log.info(LOG_ID, `Job ${jobId} run ${runId}: unknown event ${type} `);
+                break;
+        }
+    }
+}
+
 /**
  * Handle run task.
  * @returns {Promise<void>}
@@ -1043,9 +1143,7 @@ async function handleRun(workEntry) {
             throw new HandlerNotFoundError('Handler for type not found', spec.id);
         }
 
-        const runData = {};
         await updateRun(runId, {status: RunStatus.RUNNING});
-        runData.started_at = new Date();
         inProcessMsgs.set(runId, handler);
 
         const runConfig = {
@@ -1060,11 +1158,13 @@ async function handleRun(workEntry) {
             }
         };
 
+        const runHandler = createRunHandler(jobId, runId);
+
         handler.run(
             runConfig,
-            async (request) => await onRunRequest(jobId, request),
-            (output, config) => onRunSuccess(jobId, runId, runData, output, config),
-            (error) => onRunFail(jobId, runId, runData, error)
+            runHandler.onRunEvent,
+            runHandler.onRunSuccess,
+            runHandler.onRunFail
         );
 
     } catch (err) {
@@ -1116,15 +1216,13 @@ async function getHandler(id) {
 /**
  * Returns run message for job.
  * @param job the job to run
- * @returns {Promise<{type: number, spec: {jobId: *, taskDir: string}}>}
  */
-async function createRunMsg(job) {
-    const task = await knex('tasks').select('id').where('id', job.task).first();
+function createRunMsg(job) {
     return {
         type: HandlerMsgType.RUN,
         spec: {
             jobId: job.id,
-            taskDir: getTaskBuildOutputDir(task.id)
+            taskDir: getTaskBuildOutputDir(job.task)
         }
     };
 }
@@ -1143,7 +1241,7 @@ async function checkSignalTriggers(cid) {
     for (let trigger of triggers) {
         const job = await knex('jobs').where('id', trigger.job).first();
         if (job.state === JobState.ENABLED) {
-            const msg = await createRunMsg(job);
+            const msg = createRunMsg(job);
             handleRunMsg(msg).catch(logErr);
         }
     }
@@ -1167,10 +1265,10 @@ async function runTimeTrigger(job) {
         if (last_run && last_run.started_at) {
             let timeFromLast = moment(Date.now()).diff(moment(last_run.started_at), 'seconds');
             if (timeFromLast > job.trigger) {
-                await handleRunMsg(await createRunMsg(job));
+                await handleRunMsg(createRunMsg(job));
             }
         } else {
-            await handleRunMsg(await createRunMsg(job));
+            await handleRunMsg(createRunMsg(job));
         }
 
     }
@@ -1182,13 +1280,11 @@ async function runTimeTrigger(job) {
  */
 async function runTimeTriggers() {
     try {
-        const jobs = await knex.select().table('jobs');
+        const jobs = await knex('jobs').where('state', JobState.ENABLED);
 
         if (jobs) {
             for (let i = 0; i < jobs.length; i++) {
-                if (jobs[i].state === JobState.ENABLED) {
-                    await runTimeTrigger(jobs[i]).catch(logErr);
-                }
+                await runTimeTrigger(jobs[i]).catch(logErr);
             }
         }
         startIfNotRunning();

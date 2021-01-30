@@ -32,9 +32,9 @@ async function index(cid, method, from) {
     async function fetchSigSetAndChangeIndexingStatus(status) {
         await knex.transaction(async tx => {
             sigSet = await tx('signal_sets').where('cid', cid).first();
-            sigSet.indexing = JSON.parse(sigSet.indexing);
-            sigSet.indexing.status = status;
-            await tx('signal_sets').where('cid', cid).update('indexing', JSON.stringify(sigSet.indexing));
+            sigSet.state= JSON.parse(sigSet.state);
+            sigSet.state.indexing.status = status;
+            await tx('signal_sets').where('cid', cid).update('state', JSON.stringify(sigSet.state));
             signalByCidMap = await signalSets.getSignalByCidMapTx(tx, sigSet);
         });
     }

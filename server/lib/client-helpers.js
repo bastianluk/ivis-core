@@ -32,8 +32,7 @@ async function getAuthenticatedConfig(context) {
             namespace: context.user.namespace
         },
         globalPermissions,
-        builtinTemplates: builtinTemplates.list(),
-        builtinTasks: await builtinTasks.list()
+        builtinTemplates: builtinTemplates.list()
     }
 }
 

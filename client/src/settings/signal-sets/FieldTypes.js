@@ -1,7 +1,7 @@
 'use strict';
 
 import React from "react";
-import {CheckBox, DatePicker, InputField} from "../../lib/form";
+import {ACEEditor, CheckBox, DateTimePicker, InputField} from "../../lib/form";
 import moment from "moment";
 
 const { SignalType, SignalSource } = require('../../../../shared/signals');
@@ -71,7 +71,7 @@ export default class FieldTypes {
                 }
             },
             render: (sigSpec, self, formId) =>
-                <DatePicker
+                <DateTimePicker
                     key={sigSpec.cid}
                     id={formId}
                     label={sigSpec.name}
@@ -81,6 +81,27 @@ export default class FieldTypes {
             ,
             getSignal: (sigSpec, data, formId) => data[formId] === '' ? null : parseDate(data[formId]),
             populateFields: (sigSpec, data, value, formId) => data[formId] = value === null ? moment().format('YYYY-MM-DD HH:mm:ss') : moment(value).format('YYYY-MM-DD HH:mm:ss')
+        };
+
+        this.fieldTypes[SignalType.JSON] = {
+            localValidate: (sigSpec, state, formId) => {
+                const val = state.getIn([formId, 'value']);
+
+                try {
+                    const o = JSON.parse(val);
+                    if (typeof o !== "object" || Array.isArray(o))
+                        throw SyntaxError("Only JSON objects are allowed.");
+                }
+                catch (e) {
+                    if (e instanceof SyntaxError) {
+                        state.setIn([formId, 'error'], t('Please enter a valid JSON.') + " (" + e.message + ")");
+                    }
+                    else throw e;
+                }
+            },
+            render: (sigSpec, self, formId) => <ACEEditor key={sigSpec.cid} id={formId} label={sigSpec.name} mode={"json"} height={100} />,
+            getSignal: (sigSpec, data, formId) => data[formId] === '' ? null : JSON.parse(data[formId]),
+            populateFields: (sigSpec, data, value, formId) => data[formId] = value === null ? '' : JSON.stringify(value)
         };
     }
 

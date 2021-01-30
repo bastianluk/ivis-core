@@ -17,6 +17,8 @@ import {withComponentMixins} from "../lib/decorator-helpers";
 import interoperableErrors
     from "../../../shared/interoperable-errors";
 
+import {SUBSTITUTE_TS_SIGNAL} from "../../../shared/signal-sets";
+
 // How many aggregationIntervals before and after an absolute interval is search for prev/next values. This is used only in aggregations to avoid unnecessary aggregations.
 const prevNextSize = 100;
 const docsLimitDefault = 1000;
@@ -31,6 +33,9 @@ export function forAggs(signals, fn) {
     return result;
 }
 
+function getTsSignalCid(signalSet) {
+    return signalSet.tsSigCid || SUBSTITUTE_TS_SIGNAL;
+}
 
 export const TimeSeriesPointType = {
     LTE: 'lte',
@@ -132,7 +137,7 @@ class DataAccess {
 
         for (const sigSetCid in sigSets) {
             const sigSet = sigSets[sigSetCid];
-            const tsSig = sigSet.tsSigCid || 'ts';
+            const tsSig = getTsSignalCid(sigSet);
 
             const qry = {
                 sigSetCid,
@@ -201,7 +206,8 @@ class DataAccess {
         for (const sigSetCid in sigSets) {
             const sigSetRes = responseData[idx];
             const sigSet = sigSets[sigSetCid];
-            const tsSig = sigSet.tsSigCid || 'ts';
+            // When using time series, and tsSigCId is not specified, we get ts cid by server
+            const tsSig = sigSet.tsSigCid || sigSetRes.tsSigCid;
 
             if (sigSetRes.docs.length > 0) {
                 const doc = sigSetRes.docs[0];
@@ -239,10 +245,15 @@ class DataAccess {
 
         for (const sigSetCid in sigSets) {
             const sigSet = sigSets[sigSetCid];
-            const tsSig = sigSet.tsSigCid || 'ts';
+            const tsSig = getTsSignalCid(sigSet);
+
+            const queryBase = {
+                sigSetCid,
+                substitutionOpts: sigSet.substitutionOpts
+            };
 
             const prevQry = {
-                sigSetCid,
+                ...queryBase,
                 filter: {
                     type: 'range',
                     sigCid: tsSig,
@@ -251,7 +262,7 @@ class DataAccess {
             };
 
             const mainQry = {
-                sigSetCid,
+                ...queryBase,
                 filter: {
                     type: 'range',
                     sigCid: tsSig,
@@ -261,7 +272,7 @@ class DataAccess {
             };
 
             const nextQry = {
-                sigSetCid,
+                ...queryBase,
                 filter: {
                     type: 'range',
                     sigCid: tsSig,
@@ -382,7 +393,7 @@ class DataAccess {
             const sigSetResNext = responseData[idx + 2];
 
             const sigSet = sigSets[sigSetCid];
-            const tsSig = sigSet.tsSigCid || 'ts';
+            const tsSig = sigSet.tsSigCid || sigSetResMain.tsSigCid;
 
             const processDoc = doc => {
                 const data = {};
@@ -523,7 +534,7 @@ class DataAccess {
 
         for (const sigSetCid in sigSets) {
             const sigSet = sigSets[sigSetCid];
-            const tsSig = sigSet.tsSigCid || 'ts';
+            const tsSig = getTsSignalCid(sigSet);
 
             const qry = {
                 sigSetCid,
@@ -558,11 +569,11 @@ class DataAccess {
     }
 
 
-
     /*
-      signals = [ sigCid1, sigCid2 ]
+      signals = [ sigCid1, sigCid2 ],
+      metrics: { [sigCid]: ['min', 'max', 'avg', 'sum'] }    // additional metrics for each bucket, same format as signals in summary query
     */
-    getHistogramQueries(sigSetCid, signals, maxBucketCounts, minSteps, filter) {
+    getHistogramQueries(sigSetCid, signals, maxBucketCounts, minSteps, filter, metrics) {
         if (Number.isInteger(maxBucketCounts) || maxBucketCounts === undefined)
             maxBucketCounts = signals.map(x => maxBucketCounts); // copy numeric value for each signal
         else if (signals.length !== maxBucketCounts.length)
@@ -575,10 +586,10 @@ class DataAccess {
 
         let bucketGroups = {};
         signals.map((sigCid, index) => {
-           bucketGroups[sigCid + ":" + index] = {
-               maxBucketCount: maxBucketCounts[index],
-               minStep: minSteps[index]
-           };
+            bucketGroups[sigCid + ":" + index] = {
+                maxBucketCount: maxBucketCounts[index],
+                minStep: minSteps[index]
+            };
         });
 
         const qry = {
@@ -588,8 +599,9 @@ class DataAccess {
             aggs: []
         };
 
-        let aggs = qry.aggs;
+        let aggs = [qry];
         for (const [index, sigCid] of signals.entries()) {
+            aggs = aggs[0].aggs;
             aggs.push(
                 {
                     sigCid,
@@ -598,37 +610,28 @@ class DataAccess {
                     aggs: []
                 }
             );
-            aggs = aggs[0].aggs;
+        }
+
+        if (metrics) {
+            aggs[0].signals = metrics;
         }
 
         return [qry];
     }
 
     processHistogramResults(responseData, sigSetCid, signals) {
-        const processBucketsRecursive = function(bucket) {
+        const processBucketsRecursive = function (bucket) {
+            let agg;
             if (bucket.aggs && bucket.aggs.length > 0) {
-                let buckets = bucket.aggs[0].buckets.map(processBucketsRecursive);
-                return {
-                    step: bucket.aggs[0].step,     // step of the inner aggregation
-                    offset: bucket.aggs[0].offset, // offset of the inner aggregation
-                    buckets: buckets,
-                    key: bucket.key,
-                    count: bucket.count
-                }
+                agg = bucket.aggs[0];
+                agg.buckets = agg.buckets.map(processBucketsRecursive);
             }
-            else
-                return {
-                    key: bucket.key,
-                    count: bucket.count
-                };
+            delete bucket.aggs;
+            return {...bucket, ...agg};
         };
 
         if (signals.length > 0) {
-            return {
-                step: responseData[0].aggs[0].step,
-                offset: responseData[0].aggs[0].offset,
-                buckets: responseData[0].aggs[0].buckets.map(b => processBucketsRecursive(b))
-            };
+            return processBucketsRecursive(responseData[0]);
         } else {
             return {
                 buckets: []
@@ -660,7 +663,7 @@ class DataAccess {
 
 
     /*
-        aggs = [ { sigCid, agg_type } ]
+        aggs = [ { sigCid, agg_type, <parameters of the aggregation> } ]
     */
     getAggsQueries(sigSetCid, filter, aggs) {
         const qry = {
@@ -679,7 +682,7 @@ class DataAccess {
 
     /*
         summary: {
-            signals: [sigCid: ['min', 'max', 'avg']]
+            signals: {sigCid: ['min', 'max', 'avg']}
         }
      */
     getSummaryQueries(sigSetCid, filter, summary) {
@@ -755,7 +758,7 @@ export class DataAccessSession {
     }
 
     async _getLatestOne(type, ...args) {
-        const results = await this._getLatestMultiple(type, [{ type, args }]);
+        const results = await this._getLatestMultiple(type, [{type, args}]);
         if (results) {
             return results[0];
         } else {
@@ -775,12 +778,20 @@ export class DataAccessSession {
         return await this._getLatestOne('timeSeriesSummary', sigSets, intervalAbsolute);
     }
 
-    async getLatestHistogram(sigSetCid, signals, maxBucketCount, minStep, filter) {
-        return await this._getLatestOne('histogram', sigSetCid, signals, maxBucketCount, minStep, filter);
+    async getLatestHistogram(sigSetCid, signals, maxBucketCount, minStep, filter, metrics) {
+        return await this._getLatestOne('histogram', sigSetCid, signals, maxBucketCount, minStep, filter, metrics);
     }
 
     async getLatestDocs(sigSetCid, signals, filter, sort, limit) {
         return await this._getLatestOne('docs', sigSetCid, signals, filter, sort, limit);
+    }
+
+    async getLatestSummary(sigSetCid, filter, summary) {
+        return await this._getLatestOne('summary', sigSetCid, filter, summary);
+    }
+
+    async getLatestAggs(sigSetCid, filter, aggs) {
+        return await this._getLatestOne('aggs', sigSetCid, filter, aggs);
     }
 
     async getLatestMixed(queries) {
@@ -918,6 +929,71 @@ export class TimeSeriesPointProvider extends Component {
         return (
             <TimeSeriesDataProvider
                 fetchDataFun={async (dataAccessSession, intervalAbsolute) => await dataAccessSession.getLatestTimeSeriesPoint(this.props.signalSets, this.props.tsSpec.getTs(intervalAbsolute), this.props.tsSpec.pointType)}
+                renderFun={this.props.renderFun}
+                loadingRenderFun={this.props.loadingRenderFun}
+            />
+        );
+    }
+}
+
+export class TimeSeriesLimitedPointsProvider extends Component {
+    static propTypes = {
+        signalSets: PropTypes.object.isRequired,
+        limit: PropTypes.number.isRequired,
+        renderFun: PropTypes.func.isRequired,
+        loadingRenderFun: PropTypes.func
+    }
+
+    async fetchDataFun(dataAccessSession, intervalAbsolute) {
+        const queries = [];
+        const sigSets = Object.keys(this.props.signalSets);
+
+
+        for (const sigSetCid of sigSets) {
+            const sigSet = this.props.signalSets[sigSetCid];
+            const tsSig = getTsSignalCid(sigSet);
+
+            const filter = {
+                type: 'and',
+                children: [
+                    {
+                        type: 'range',
+                        sigCid: tsSig,
+                        [TimeSeriesPointType.LTE]: moment().toISOString()
+                    }
+                ]
+            }
+
+            const signals = [tsSig, ...sigSet.signals];
+
+            const sort = [
+                {
+                    sigCid: tsSig,
+                    order: 'desc'
+                },
+            ];
+
+            queries.push({type: 'docs', args: [sigSetCid, signals, filter, sort, this.props.limit]});
+        }
+
+        const results = await dataAccessSession.getLatestMixed(queries);
+
+        const data = {};
+
+        if (results) {
+            results.forEach((result, i) => {
+                data[sigSets[i]] = result;
+            })
+        }
+
+        return data;
+    }
+
+    render() {
+
+        return (
+            <TimeSeriesDataProvider
+                fetchDataFun={::this.fetchDataFun}
                 renderFun={this.props.renderFun}
                 loadingRenderFun={this.props.loadingRenderFun}
             />

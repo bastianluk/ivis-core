@@ -72,11 +72,13 @@ export class LineChart extends Component {
         config: PropTypes.object.isRequired,
         contentComponent: PropTypes.func,
         contentRender: PropTypes.func,
-        onClick: PropTypes.func,
+        onClick: PropTypes.func, // FIXME: should this be passed to the LineChartBase?
         height: PropTypes.number,
         margin: PropTypes.object,
         withTooltip: PropTypes.bool,
         withBrush: PropTypes.bool,
+        withZoom: PropTypes.bool,
+        zoomUpdateReloadInterval: PropTypes.number, // milliseconds after the zoom ends; set to null to disable updates
         tooltipContentComponent: PropTypes.func,
         tooltipContentRender: PropTypes.func,
         tooltipExtraProps: PropTypes.object,
@@ -89,6 +91,7 @@ export class LineChart extends Component {
         compareConfigs: PropTypes.func,
         lineVisibility: PropTypes.func,
         lineCurve: PropTypes.func,
+        lineWidth: PropTypes.number,
 
         controlTimeIntervalChartWidth: PropTypes.bool
     }
@@ -98,6 +101,7 @@ export class LineChart extends Component {
         height: 500,
         withTooltip: true,
         withBrush: true,
+        withZoom: true,
         lineVisibility: pointsOnNoAggregation,
         controlTimeIntervalChartWidth: true,
         lineCurve: d3Shape.curveLinear
@@ -188,12 +192,15 @@ export class LineChart extends Component {
                 getSignalGraphContent={(base, sigSetCid, sigCid) => <path ref={node => this.areaPathSelection[sigSetCid][sigCid] = select(node)}/>}
                 withTooltip={props.withTooltip}
                 withBrush={props.withBrush}
+                withZoom={props.withZoom}
+                zoomUpdateReloadInterval={props.zoomUpdateReloadInterval}
                 contentComponent={props.contentComponent}
                 contentRender={props.contentRender}
                 tooltipContentComponent={this.props.tooltipContentComponent}
                 tooltipContentRender={this.props.tooltipContentRender}
                 tooltipExtraProps={this.props.tooltipExtraProps}
                 lineVisibility={this.props.lineVisibility}
+                lineWidth={this.props.lineWidth}
                 controlTimeIntervalChartWidth={this.props.controlTimeIntervalChartWidth}
                 lineCurve={this.props.lineCurve}
             />

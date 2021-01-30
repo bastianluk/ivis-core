@@ -27,7 +27,7 @@ IVIS-CORE has been realized on top of several technologies, in particular based 
 ## Quick Start
 
 ### Preparation
-The project creates three URL endpoints, which are referred to as "trusted", "sandbox" and "public". This allows Mailtrain
+The project creates three URL endpoints, which are referred to as "trusted", "sandbox" and "public". This allows IVIS
 to guarantee security and avoid XSS attacks in the multi-user settings. The function of these three endpoints is as follows:
 - *trusted* - This is the main endpoint for the UI that a logged-in user uses to manage lists, send campaigns, etc.
 - *sandbox* - This is an endpoint not directly visible to a user. It is used to host user-defined panels.
@@ -39,14 +39,14 @@ The recommended deployment of IVIS is to use 3 DNS entries that all points to th
 - *api.ivis.example.com* - public endpoint (CNAME record `api.ivis` under `example.com` domain that points to `ivis`)
 
 
-### Installation on fresh CentOS 7 or Ubuntu 18.04 LTS (public website secured by SSL)
+### Installation on fresh CentOS 8, CentOS 7 or Ubuntu 18.04 LTS (public website secured by SSL)
 
-This will setup a publicly accessible Mailtrain instance. Endpoints trusted and sandbox will provide both HTTP (on port 80)
+This will setup a publicly accessible IVIS instance. Endpoints trusted and sandbox will provide both HTTP (on port 80)
 and HTTPS (on port 443). The HTTP ports just issue HTTP redirect to their HTTPS counterparts. The API endpoit will be 
 available only via HTTPS. 
 
 The script below will also acquire a valid certificate from [Let's Encrypt](https://letsencrypt.org/).
-If you are hosting Mailtrain on AWS or some other cloud provider, make sure that **before** running the installation
+If you are hosting IVIS on AWS or some other cloud provider, make sure that **before** running the installation
 script you allow inbound connection to ports 80 (HTTP) and 443 (HTTPS).
 
 **Note,** that this will automatically accept the Let's Encrypt's Terms of Service.
@@ -61,7 +61,12 @@ Thus, by running this script below, you agree with the Let's Encrypt's Terms of 
 
 2. Install GIT
 
-   For Centos 7 type:
+   For CentOS 8 type:
+    ```
+    dnf install -y git
+    ```
+
+   For CentOS 7 type:
     ```
     yum install -y git
     ```
@@ -81,7 +86,12 @@ Thus, by running this script below, you agree with the Let's Encrypt's Terms of 
 4. Run the installation script. Replace the urls and your email address with the correct values. **NOTE** that running this script you agree
    Let's Encrypt's conditions.
 
-   For Centos 7 type:
+   For CentOS 8 type:
+    ```
+    bash setup/install-centos8-https.sh ivis.example.com sbox.ivis.example.com api.ivis.example.com admin@example.com
+    ```
+
+   For CentOS 7 type:
     ```
     bash setup/install-centos7-https.sh ivis.example.com sbox.ivis.example.com api.ivis.example.com admin@example.com
     ```
@@ -91,7 +101,7 @@ Thus, by running this script below, you agree with the Let's Encrypt's Terms of 
     bash setup/install-ubuntu1804-https.sh ivis.example.com sbox.ivis.example.com api.ivis.example.com admin@example.com
     ```
 
-5. Start Mailtrain and enable to be started by default when your server starts.
+5. Start IVIS and enable to be started by default when your server starts.
     ```
     systemctl start ivis-core
     systemctl enable ivis-core
@@ -105,7 +115,7 @@ Thus, by running this script below, you agree with the Let's Encrypt's Terms of 
 
 
 
-### Installation on fresh CentOS 7 or Ubuntu 18.04 LTS (local installation)
+### Installation on fresh CentOS 8, CentOS 7 or Ubuntu 18.04 LTS (local installation)
 
 This will setup a locally accessible IVIS instance (primarily for development and testing).
 All endpoints (trusted, sandbox, public) will provide only HTTP as follows:
@@ -120,7 +130,12 @@ All endpoints (trusted, sandbox, public) will provide only HTTP as follows:
 
 2. Install GIT
 
-   For Centos 7 type:
+   For CentOS 8 type:
+    ```
+    dnf install -y git
+    ```
+
+   For CentOS 7 type:
     ```
     yum install -y git
     ```
@@ -139,7 +154,12 @@ All endpoints (trusted, sandbox, public) will provide only HTTP as follows:
 
 4. Run the installation script.
 
-   For Centos 7 type:
+   For CentOS 8 type:
+    ```
+    bash setup/install-centos8-local.sh
+    ```
+
+   For CentOS 7 type:
     ```
     bash setup/install-centos7-local.sh
     ```
@@ -149,7 +169,7 @@ All endpoints (trusted, sandbox, public) will provide only HTTP as follows:
     bash setup/install-ubuntu1804-local.sh
     ```
 
-5. Start Mailtrain and enable to be started by default when your server starts.
+5. Start IVIS and enable to be started by default when your server starts.
     ```
     systemctl start ivis-core
     systemctl enable ivis-core

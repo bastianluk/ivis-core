@@ -39,6 +39,7 @@ function toQuery(sigSet, signals, params) {
                 continue;
             }
 
+            // search allowed only on these types as there is no easy way to do in similarly on other types in ES
             if (signals[i - 1].type === SignalType.TEXT || signals[i - 1].type === SignalType.KEYWORD) {
                 filter.children.push({
                     type: 'wildcard',
@@ -105,7 +106,7 @@ function fromQueryResultToDTFormat(queryResult, signals) {
     const data = [];
     for (let doc of queryResult.docs) {
         const record = [];
-        record.push(doc['id']);
+        record.push(doc['_id']);
         for (let signal of signals) {
             record.push(doc[signal.cid]);
         }

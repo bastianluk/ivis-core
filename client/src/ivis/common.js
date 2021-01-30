@@ -141,3 +141,69 @@ export function setZoomTransform(self, setStateCallback) {
 }
 
 export const ZoomEventSources = ["mousemove", "dblclick", "wheel", "touchstart", "touchmove" ]; // source: https://github.com/d3/d3-zoom#api-reference (table with events - causing "zoom" event)
+
+export function AreZoomTransformsEqual(a, b, scale_epsilon = 0.001, translate_epsilon = 0.01) {
+    if (!(a.hasOwnProperty("x") && a.hasOwnProperty("y") && a.hasOwnProperty("k"))) return false;
+    if (!(b.hasOwnProperty("x") && b.hasOwnProperty("y") && b.hasOwnProperty("k"))) return false;
+    if (Math.abs(a.k - b.k) > scale_epsilon) return false;
+    if (Math.abs(a.x - b.x) > translate_epsilon) return false;
+    if (Math.abs(a.y - b.y) > translate_epsilon) return false;
+    return true;
+}
+
+/**
+ * Helper function to draw a set of rectangles to a D3 selection
+ * @param data - array of values
+ * @param selection - D3 selection
+ * @param x_position - value or function (evaluated with each datum)
+ * @param y_position - value or function (evaluated with each datum)
+ * @param width - value or function (evaluated with each datum)
+ * @param height - value or function (evaluated with each datum)
+ * @param color - color of bars - value or function (evaluated with each datum)
+ * @param key - see https://github.com/d3/d3-selection#selection_data
+ */
+export function drawBars(data, selection, x_position, y_position, width, height, color, key) {
+    const bars = selection
+        .selectAll('rect')
+        .data(data, key || (d => d));
+
+    bars.enter()
+        .append('rect')
+        .merge(bars)
+        .attr('x', x_position)
+        .attr('y', y_position)
+        .attr("width", width)
+        .attr("height", height)
+        .attr("fill", color);
+
+    bars.exit()
+        .remove();
+}
+
+export {curveVerticalStep} from "../lib/d3-shape_step_vertical";
+
+export const ConfigDifference = {
+    // We assume here order from the most benign to the worst
+    NONE: 0,
+    RENDER: 1,
+    DATA: 2,
+    DATA_WITH_CLEAR: 3
+};
+
+/**
+ * Test if time interval changed
+ * @param self          the chart object, must use the intervalAccessMixin
+ * @returns {number}    ConfigDifference
+ */
+export function TimeIntervalDifference(self, props) {
+    const prevAbs = self.getIntervalAbsolute(props);
+    const prevSpec = self.getIntervalSpec(props);
+
+    if (prevSpec !== self.getIntervalSpec()) {
+        return ConfigDifference.DATA_WITH_CLEAR;
+    } else if (prevAbs !== self.getIntervalAbsolute()) { // If its just a regular refresh, don't clear the chart
+        return ConfigDifference.DATA;
+    }
+    return ConfigDifference.NONE;
+}
+

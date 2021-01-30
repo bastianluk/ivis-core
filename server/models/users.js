@@ -21,8 +21,6 @@ const mailer = require('../lib/mailer');
 const mailerSendMail = bluebird.promisify(mailer.sendMail.bind(mailer));
 */
 
-const passport = require('../lib/passport');
-
 const namespaceHelpers = require('../lib/namespace-helpers');
 
 const allowedKeys = new Set(['username', 'name', 'email', 'password', 'phone_cell', 'address', 'namespace', 'role']);
@@ -46,7 +44,7 @@ async function _getByTx(tx, context, key, value, extraColumns = []) {
 
     // Note that getRestrictedAccessToken relies to this check to see whether a user may impersonate another. If "manageUsers" here were to be changed to something like "viewUsers", then
     // a corresponding check has to be added to getRestrictedAccessToken
-    await shares.enforceEntityPermission(context, 'namespace', user.namespace, 'manageUsers');
+    await shares.enforceEntityPermissionTx(tx, context, 'namespace', user.namespace, 'manageUsers');
 
     return user;
 }
